@@ -1,11 +1,18 @@
 import math
+from fractions import Fraction
 from pathlib import Path
 
+import av
 import cv2
 import numpy as np
 
 from videocutter.media import open_capture, read_frame
 from videocutter.model import TIME_EPSILON, MediaItem, TimelineDocument
+from videocutter.output_settings import (
+    OutputSettings,
+    resolve_output_bitrate_kbps,
+    resolve_output_fps,
+)
 
 
 # 对话框里的顺序就是列表顺序。第一项是默认格式，编码是 H.264。
@@ -32,6 +39,17 @@ def suffix_for_filter(selected_filter: str) -> str:
     raise ValueError(f"unknown export filter: {selected_filter}")
 
 
+def codec_for_suffix(suffix: str) -> str:
+    lowered = suffix.lower()
+    if lowered in (".mp4", ".mov"):
+        return "libx264"
+    if lowered == ".avi":
+        return "mjpeg"
+    if lowered == ".webm":
+        return "libvpx-vp9"
+    raise ValueError(f"unsupported export suffix: {suffix}")
+
+
 def fourcc_for_suffix(suffix: str) -> str:
     lowered = suffix.lower()
     for _label, item_suffix, fourcc in EXPORT_CHOICES:
@@ -44,23 +62,31 @@ def output_path_for_filter(path: str, selected_filter: str) -> str:
     return str(Path(path).with_suffix(suffix_for_filter(selected_filter)))
 
 
-def export_timeline(document: TimelineDocument, path: str, on_progress, should_stop) -> bool:
+def export_timeline(
+    document: TimelineDocument,
+    path: str,
+    on_progress,
+    should_stop,
+    settings: OutputSettings,
+) -> bool:
     reference = document.reference_media()
     segments = document.all_segments()
     if reference is None or not segments:
         raise RuntimeError("timeline has no video to export")
+    output_fps = resolve_output_fps(document, settings)
+    bitrate_kbps = resolve_output_bitrate_kbps(document, settings)
     duration = max(segment.timeline_end for segment in segments)
-    frame_count = int(math.floor(duration * reference.fps + TIME_EPSILON))
+    frame_count = int(math.floor(duration * output_fps + TIME_EPSILON))
     if frame_count <= 0:
         raise RuntimeError(f"export frame count must be positive, got {frame_count}")
-    writer = cv2.VideoWriter(
-        path,
-        cv2.VideoWriter_fourcc(*fourcc_for_suffix(Path(path).suffix)),
-        reference.fps,
-        (reference.width, reference.height),
-    )
-    if not writer.isOpened():
-        raise RuntimeError(f"failed to create video: {path}")
+    codec = codec_for_suffix(Path(path).suffix)
+    pix_fmt = "yuvj420p" if codec == "mjpeg" else "yuv420p"
+    container = av.open(path, mode="w")
+    stream = container.add_stream(codec, rate=Fraction(output_fps).limit_denominator(1_000_000))
+    stream.width = reference.width
+    stream.height = reference.height
+    stream.pix_fmt = pix_fmt
+    stream.bit_rate = int(round(bitrate_kbps * 1000))
     captures: dict[str, cv2.VideoCapture] = {}
     cancelled = False
     try:
@@ -69,18 +95,24 @@ def export_timeline(document: TimelineDocument, path: str, on_progress, should_s
             cancelled = True
             return False
         for index in range(frame_count):
-            writer.write(_frame_at(document, reference, captures, index / reference.fps))
+            image = _frame_at(document, reference, captures, index / output_fps)
+            frame = av.VideoFrame.from_ndarray(image, format="bgr24")
+            frame.pts = index
+            for packet in stream.encode(frame):
+                container.mux(packet)
             on_progress(index + 1, frame_count)
             if should_stop():
                 cancelled = True
                 return False
+        for packet in stream.encode():
+            container.mux(packet)
         return True
     finally:
-        writer.release()
+        container.close()
         for capture in captures.values():
             capture.release()
         if cancelled:
-            Path(path).unlink()
+            Path(path).unlink(missing_ok=True)
 
 
 def _frame_at(

@@ -106,6 +106,7 @@ def load_project(path: str) -> TimelineDocument:
                 frame_count=int(probed["frame_count"]),
                 width=int(probed["width"]),
                 height=int(probed["height"]),
+                bitrate_kbps=float(probed["bitrate_kbps"]),
             )
         )
     used_ids: set[str] = set()

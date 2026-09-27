@@ -17,6 +17,7 @@ def sample_media(
         frame_count=int(duration * 10),
         width=width,
         height=height,
+        bitrate_kbps=1000.0,
     )
 
 

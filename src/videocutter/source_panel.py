@@ -69,12 +69,19 @@ class MediaList(QListWidget):
 
 
 class SourcePanel(QWidget):
-    def __init__(self, document: TimelineDocument, on_changed, on_open_project, on_save_project) -> None:
+    def __init__(
+        self,
+        document: TimelineDocument,
+        on_changed,
+        on_open_project,
+        on_save_project,
+        on_edit_output_settings,
+    ) -> None:
         super().__init__()
         self.document = document
         self._on_changed = on_changed
         self.setAcceptDrops(True)
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(460)
         self.add_button = QPushButton("+")
         self.add_button.setFixedSize(32, 32)
         self.add_button.setToolTip("添加视频")
@@ -89,6 +96,11 @@ class SourcePanel(QWidget):
         self.save_button.setFixedHeight(32)
         self.save_button.setToolTip("保存工程")
         self.save_button.clicked.connect(on_save_project)
+        self.settings_button = QPushButton("设置")
+        self.settings_button.setObjectName("settingsButton")
+        self.settings_button.setFixedHeight(32)
+        self.settings_button.setToolTip("输出帧率和码率")
+        self.settings_button.clicked.connect(on_edit_output_settings)
         self.export_button = QPushButton("导出")
         self.export_button.setObjectName("exportButton")
         self.export_button.setFixedHeight(32)
@@ -99,6 +111,7 @@ class SourcePanel(QWidget):
         header.addStretch(1)
         header.addWidget(self.open_button)
         header.addWidget(self.save_button)
+        header.addWidget(self.settings_button)
         header.addWidget(self.export_button)
         header.addWidget(self.add_button)
         self.file_list = MediaList(self)
@@ -157,6 +170,7 @@ class SourcePanel(QWidget):
             frame_count=int(probed["frame_count"]),
             width=int(probed["width"]),
             height=int(probed["height"]),
+            bitrate_kbps=float(probed["bitrate_kbps"]),
         )
         self.document.add_media(item)
         self._append_media_row(item)

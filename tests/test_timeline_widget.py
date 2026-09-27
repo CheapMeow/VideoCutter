@@ -19,6 +19,7 @@ def media(media_id: str, duration: float) -> MediaItem:
         frame_count=int(duration * 10),
         width=16,
         height=16,
+        bitrate_kbps=1000.0,
     )
 
 

@@ -2,7 +2,7 @@ import math
 import time
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QSplitter
+from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMainWindow, QSplitter
 
 from videocutter.export import (
     default_export_filter,
@@ -11,6 +11,8 @@ from videocutter.export import (
     output_path_for_filter,
 )
 from videocutter.model import TimelineDocument
+from videocutter.output_settings import OutputSettings, output_rate_status
+from videocutter.output_settings_dialog import OutputSettingsDialog
 from videocutter.preview_widget import PreviewWidget
 from videocutter.project import PROJECT_FILTER, load_project, project_output_path, save_project
 from videocutter.source_panel import SourcePanel
@@ -82,7 +84,7 @@ QPushButton {
 QPushButton:hover {
     background: #4a4a4a;
 }
-QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton {
+QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton, QPushButton#settingsButton {
     font-size: 13px;
     padding: 0 12px;
 }
@@ -105,6 +107,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.document = TimelineDocument()
+        self.output_settings = OutputSettings()
         self._export_stop = False
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
@@ -113,6 +116,7 @@ class MainWindow(QMainWindow):
             self.refresh_views,
             self._open_project,
             self._save_project,
+            self._edit_output_settings,
         )
         self.source_panel.export_button.clicked.connect(self._export_video)
         self.preview = PreviewWidget(self.document)
@@ -131,7 +135,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.source_panel)
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([380, 900])
+        splitter.setSizes([480, 800])
         self.setCentralWidget(splitter)
         self.setStyleSheet(STYLESHEET)
 
@@ -185,9 +189,19 @@ class MainWindow(QMainWindow):
         self.source_panel.reload_media_list()
         self.refresh_views()
 
+    def _edit_output_settings(self) -> None:
+        dialog = OutputSettingsDialog(self.output_settings, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.output_settings = dialog.result_settings()
+
     def _export_video(self) -> None:
         if self.document.reference_media() is None or not self.document.all_segments():
             self.show_status("轨道上没有可以输出的视频")
+            return
+        message = output_rate_status(self.document, self.output_settings)
+        if message is not None:
+            self.show_status(message)
             return
         path, selected_filter = QFileDialog.getSaveFileName(
             self,
@@ -212,6 +226,7 @@ class MainWindow(QMainWindow):
                 path,
                 self._report_export_progress,
                 self._export_should_stop,
+                self.output_settings,
             )
         finally:
             self.source_panel.setEnabled(True)

@@ -140,6 +140,7 @@ def _add_media(document: TimelineDocument, path: Path) -> MediaItem:
         frame_count=int(probed["frame_count"]),
         width=int(probed["width"]),
         height=int(probed["height"]),
+        bitrate_kbps=float(probed["bitrate_kbps"]),
     )
     document.add_media(item)
     return item

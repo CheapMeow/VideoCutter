@@ -1,5 +1,6 @@
 PySide6-Essentials>=6.6
 opencv-python>=4.8
 numpy>=1.26
+av>=14
 pytest>=8.0
 pyinstaller>=6.0

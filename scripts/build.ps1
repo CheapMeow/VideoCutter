@@ -11,9 +11,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "VIDEOCUTTER_PYTHON must be Python 3.11 or newer"
 }
 
-& $env:VIDEOCUTTER_PYTHON -c "import PySide6, cv2, PyInstaller"
+& $env:VIDEOCUTTER_PYTHON -c "import PySide6, cv2, PyInstaller, av"
 if ($LASTEXITCODE -ne 0) {
-    throw "VIDEOCUTTER_PYTHON is missing PySide6, opencv-python, or PyInstaller"
+    throw "VIDEOCUTTER_PYTHON is missing PySide6, opencv-python, PyInstaller, or av"
 }
 
 & $env:VIDEOCUTTER_PYTHON -m PyInstaller `
@@ -28,6 +28,7 @@ if ($LASTEXITCODE -ne 0) {
     --collect-submodules videocutter `
     --collect-all PySide6 `
     --collect-all cv2 `
+    --collect-all av `
     src\videocutter\__main__.py
 
 if ($LASTEXITCODE -ne 0) {

@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import cv2
@@ -45,15 +46,19 @@ def probe_video(path: str) -> dict[str, float | int]:
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    bitrate_kbps = float(capture.get(cv2.CAP_PROP_BITRATE))
     capture.release()
     if fps <= 0 or frame_count <= 0 or width <= 0 or height <= 0:
         raise RuntimeError(f"invalid video metadata: {path}")
+    if not math.isfinite(bitrate_kbps) or bitrate_kbps < 0:
+        raise RuntimeError(f"invalid video bitrate: {path}")
     return {
         "fps": fps,
         "frame_count": frame_count,
         "width": width,
         "height": height,
         "duration_sec": frame_count / fps,
+        "bitrate_kbps": bitrate_kbps,
     }
 
 

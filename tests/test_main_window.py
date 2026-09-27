@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from tests.support import write_color_video
 from videocutter.geometry import TRACK_HEIGHT, row_top
 from videocutter.main_window import MainWindow, format_export_progress, format_export_result
+from videocutter.output_settings_dialog import OutputSettingsDialog
 from videocutter.media import MEDIA_MIME
 from videocutter.project import project_output_path
 
@@ -32,12 +33,32 @@ def test_window_has_source_preview_and_timeline(qapp):
     assert window.source_panel.add_button.text() == "+"
     assert window.source_panel.open_button.text() == "打开"
     assert window.source_panel.save_button.text() == "保存"
+    assert window.source_panel.settings_button.text() == "设置"
     assert window.source_panel.export_button.text() == "导出"
+    assert window.output_settings.fps_mode == "min"
+    assert window.output_settings.bitrate_mode == "min"
     assert window.preview.isVisible()
     assert window.timeline.isVisible()
     assert window.statusBar().isVisible()
     window._export_video()
     assert window.statusBar().currentMessage() == "轨道上没有可以输出的视频"
+    window.close()
+
+
+def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
+    window = MainWindow()
+    dialog = OutputSettingsDialog(window.output_settings, window)
+    assert dialog.fps_min.isChecked()
+    assert dialog.bitrate_min.isChecked()
+    assert dialog.fps_spin.isEnabled() is False
+    dialog.fps_specified.setChecked(True)
+    dialog.fps_spin.setValue(24)
+    dialog.bitrate_max.setChecked(True)
+    assert dialog.fps_spin.isEnabled() is True
+    window.output_settings = dialog.result_settings()
+    assert window.output_settings.fps_mode == "specified"
+    assert window.output_settings.fps_value == pytest.approx(24)
+    assert window.output_settings.bitrate_mode == "max"
     window.close()
 
 

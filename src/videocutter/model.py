@@ -18,6 +18,7 @@ class MediaItem:
     frame_count: int
     width: int
     height: int
+    bitrate_kbps: float
 
 
 @dataclass
@@ -177,7 +178,7 @@ class TimelineDocument:
         self.tracks: list[list[Segment]] = []
         self.playhead = 0.0
         self.selected_segment_id: str | None = None
-        # 第一个放进轨道的素材。输出视频的宽高和帧率都用它。
+        # 第一个放进轨道的素材。输出视频的宽高用它。
         self.reference_media_id: str | None = None
         self._drag_base: list[list[Segment]] | None = None
         self._drag_original: list[list[Segment]] | None = None
@@ -190,6 +191,8 @@ class TimelineDocument:
             raise ValueError(f"media duration must be positive: {item.path}")
         if item.fps <= 0 or item.frame_count <= 0:
             raise ValueError(f"invalid media metadata: {item.path}")
+        if not math.isfinite(item.bitrate_kbps) or item.bitrate_kbps < 0:
+            raise ValueError(f"invalid media bitrate: {item.path}")
         self.media[item.media_id] = item
 
     def all_segments(self) -> list[Segment]:
