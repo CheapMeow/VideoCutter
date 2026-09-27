@@ -1,3 +1,5 @@
+import math
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -8,6 +10,21 @@ from videocutter.model import TimelineDocument
 from videocutter.preview_widget import PreviewWidget
 from videocutter.source_panel import SourcePanel
 from videocutter.timeline_widget import TimelineHost, TimelineWidget
+
+
+def format_export_progress(written: int, total: int) -> str:
+    if total <= 0:
+        raise ValueError(f"export frame count must be positive, got {total}")
+    if written < 0 or written > total:
+        raise ValueError(f"export progress {written} outside 0..{total}")
+    percent = written * 100 // total
+    return f"正在输出视频：{written}/{total}（{percent}%）"
+
+
+def format_export_result(path: str, elapsed_sec: float) -> str:
+    if not math.isfinite(elapsed_sec) or elapsed_sec < 0:
+        raise ValueError(f"export elapsed time must be finite and non-negative, got {elapsed_sec}")
+    return f"已输出视频：{path}，用时 {elapsed_sec:.2f} 秒"
 
 
 STYLESHEET = """
@@ -105,10 +122,27 @@ class MainWindow(QMainWindow):
             return
         if Path(path).suffix.lower() != ".avi":
             path = str(Path(path).with_suffix(".avi"))
-        self.show_status("正在输出视频")
+        self._export_to_path(path)
+
+    def _export_to_path(self, path: str) -> None:
+        self.source_panel.setEnabled(False)
+        self.preview.setEnabled(False)
+        self.timeline.setEnabled(False)
+        started = time.perf_counter()
+        try:
+            export_timeline(self.document, path, self._report_export_progress)
+        finally:
+            self.source_panel.setEnabled(True)
+            self.preview.setEnabled(True)
+            self.timeline.setEnabled(True)
+        elapsed = time.perf_counter() - started
+        self.show_status(format_export_result(path, elapsed))
+
+    def _report_export_progress(self, written: int, total: int) -> None:
+        self.export_written = written
+        self.export_total = total
+        self.show_status(format_export_progress(written, total))
         QApplication.processEvents()
-        export_timeline(self.document, path)
-        self.show_status(f"已输出视频：{path}")
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

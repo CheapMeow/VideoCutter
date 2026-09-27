@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 from tests.support import write_color_video
 from videocutter.geometry import TRACK_HEIGHT, row_top
-from videocutter.main_window import MainWindow
+from videocutter.main_window import MainWindow, format_export_progress, format_export_result
 from videocutter.media import MEDIA_MIME
 
 
@@ -119,6 +119,35 @@ def test_different_frame_size_is_reported_on_the_status_bar(qapp, tmp_path):
     assert dropped is False
     assert window.statusBar().currentMessage() == "无法放入轨道：素材尺寸为 80×60，轨道输出尺寸为 160×90"
     assert len(window.document.all_segments()) == 1
+    window.close()
+
+
+def test_export_status_shows_progress_and_elapsed_time(qapp, tmp_path):
+    path = tmp_path / "clip.avi"
+    write_color_video(path, frame_count=4, fps=10, size=(160, 90))
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path)])
+    media_id = _media_id(window, path)
+    assert _drop_media(window, media_id, row_top(0) + TRACK_HEIGHT / 2)
+    output = tmp_path / "exported.avi"
+    window._export_to_path(str(output))
+    assert output.is_file()
+    assert window.export_written == 4
+    assert window.export_total == 4
+    assert window.source_panel.isEnabled()
+    assert window.timeline.isEnabled()
+    message = window.statusBar().currentMessage()
+    prefix = f"已输出视频：{output}，用时 "
+    assert message.startswith(prefix)
+    assert message.endswith(" 秒")
+    elapsed = float(message[len(prefix) : -len(" 秒")])
+    assert elapsed >= 0
+    assert format_export_progress(0, 4) == "正在输出视频：0/4（0%）"
+    assert format_export_progress(4, 4) == "正在输出视频：4/4（100%）"
+    assert format_export_result(str(output), 1.2) == f"已输出视频：{output}，用时 1.20 秒"
     window.close()
 
 

@@ -32,12 +32,18 @@ def test_export_uses_the_first_size_and_the_top_track(tmp_path):
     document.place_new_segment(lower.media_id, 0.4, 0, True, 0)
     document.place_new_segment(upper.media_id, 0.4, 0, True, 0)
     output = tmp_path / "out.avi"
-    export_timeline(document, str(output))
+    progress: list[tuple[int, int]] = []
+
+    def record(written: int, total: int) -> None:
+        progress.append((written, total))
+
+    export_timeline(document, str(output), record)
     probed = probe_video(str(output))
     assert probed["width"] == 160
     assert probed["height"] == 90
     assert probed["fps"] == pytest.approx(10)
     assert probed["frame_count"] == 12
+    assert progress == [(index, 12) for index in range(13)]
     capture = open_capture(str(output))
     gap = read_frame(capture, probed["fps"], probed["frame_count"], 0.0)
     covered = read_frame(capture, probed["fps"], probed["frame_count"], 0.4)

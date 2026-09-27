@@ -7,7 +7,7 @@ from videocutter.media import open_capture, read_frame
 from videocutter.model import TIME_EPSILON, MediaItem, TimelineDocument
 
 
-def export_timeline(document: TimelineDocument, path: str) -> None:
+def export_timeline(document: TimelineDocument, path: str, on_progress) -> None:
     reference = document.reference_media()
     segments = document.all_segments()
     if reference is None or not segments:
@@ -26,8 +26,10 @@ def export_timeline(document: TimelineDocument, path: str) -> None:
         raise RuntimeError(f"failed to create video: {path}")
     captures: dict[str, cv2.VideoCapture] = {}
     try:
+        on_progress(0, frame_count)
         for index in range(frame_count):
             writer.write(_frame_at(document, reference, captures, index / reference.fps))
+            on_progress(index + 1, frame_count)
     finally:
         writer.release()
         for capture in captures.values():
