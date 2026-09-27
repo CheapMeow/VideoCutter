@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent, QKeyEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from tests.support import write_color_video
@@ -15,6 +16,7 @@ from videocutter.main_window import MainWindow, format_export_progress, format_e
 from videocutter.output_settings_dialog import OutputSettingsDialog
 from videocutter.media import MEDIA_MIME
 from videocutter.project import project_output_path
+from videocutter.source_panel import remove_mark_rect
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +74,32 @@ def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
     assert dialog.fps_min.font().pixelSize() == 13
     assert dialog.ok_button.font().pixelSize() == 13
     assert dialog.cancel_button.font().pixelSize() == 13
+    window.close()
+
+
+def test_remove_mark_deletes_the_media_record(qapp, tmp_path):
+    first = tmp_path / "first.avi"
+    second = tmp_path / "second.avi"
+    write_color_video(first, frame_count=4, fps=10, size=(160, 90))
+    write_color_video(second, frame_count=4, fps=10, size=(160, 90), red_base=40)
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(first), str(second)])
+    first_id = _media_id(window, first)
+    second_id = _media_id(window, second)
+    assert _drop_media(window, first_id, row_top(0) + TRACK_HEIGHT / 2)
+    file_list = window.source_panel.file_list
+    item = file_list.item(0)
+    assert item.data(Qt.ItemDataRole.UserRole) == first_id
+    mark = remove_mark_rect(file_list.visualItemRect(item))
+    QTest.mouseClick(file_list.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, mark.center())
+    assert first_id not in window.document.media
+    assert window.document.all_segments() == []
+    assert window.document.reference_media_id is None
+    assert file_list.count() == 1
+    assert file_list.item(0).data(Qt.ItemDataRole.UserRole) == second_id
     window.close()
 
 

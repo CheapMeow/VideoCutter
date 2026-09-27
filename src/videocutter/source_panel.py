@@ -1,21 +1,52 @@
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QMimeData, Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QEvent, QMimeData, QRect, Qt
+from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
 
 from videocutter.media import MEDIA_MIME, VIDEO_SUFFIXES, format_duration, probe_video
 from videocutter.model import MediaItem, TimelineDocument, new_id
+
+
+REMOVE_MARK_WIDTH = 28
+
+
+class MediaItemDelegate(QStyledItemDelegate):
+    def paint(self, painter: QPainter, option, index) -> None:
+        view_option = QStyleOptionViewItem(option)
+        self.initStyleOption(view_option, index)
+        full = QRect(view_option.rect)
+        view_option.rect = full.adjusted(0, 0, -REMOVE_MARK_WIDTH, 0)
+        widget = view_option.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, view_option, painter, widget)
+        painter.save()
+        painter.setPen(QColor("#e6e6e6"))
+        painter.drawText(remove_mark_rect(full), Qt.AlignmentFlag.AlignCenter, "×")
+        painter.restore()
+
+
+def remove_mark_rect(item_rect: QRect) -> QRect:
+    return QRect(
+        item_rect.right() - REMOVE_MARK_WIDTH + 1,
+        item_rect.top(),
+        REMOVE_MARK_WIDTH,
+        item_rect.height(),
+    )
 
 
 def local_files_from_mime(mime) -> list[str] | None:
@@ -39,6 +70,21 @@ class MediaList(QListWidget):
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.viewport().setAcceptDrops(True)
         self.viewport().installEventFilter(self)
+        self._item_delegate = MediaItemDelegate(self)
+        self.setItemDelegate(self._item_delegate)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None and remove_mark_rect(self.visualItemRect(item)).contains(
+                event.position().toPoint()
+            ):
+                media_id = item.data(Qt.ItemDataRole.UserRole)
+                if not isinstance(media_id, str) or not media_id:
+                    raise RuntimeError("media item is missing an id")
+                self._panel.remove_media(media_id)
+                return
+        super().mousePressEvent(event)
 
     def mimeTypes(self) -> list[str]:
         return [MEDIA_MIME]
@@ -174,6 +220,11 @@ class SourcePanel(QWidget):
         )
         self.document.add_media(item)
         self._append_media_row(item)
+
+    def remove_media(self, media_id: str) -> None:
+        self.document.delete_media(media_id)
+        self.reload_media_list()
+        self._on_changed()
 
     def reload_media_list(self) -> None:
         self.file_list.clear()

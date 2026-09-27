@@ -239,6 +239,26 @@ def test_delete_segment_rejects_an_active_drag():
     document.cancel_segment_drag()
 
 
+def test_delete_media_removes_its_segments():
+    document = TimelineDocument()
+    document.add_media(sample_media("first", 2, width=160, height=90))
+    document.add_media(sample_media("same", 2, width=160, height=90))
+    placed = document.place_new_segment("first", 0, 0, True, 0)
+    other = document.place_new_segment("same", 0, 1, True, 0)
+    document.select_segment(other.segment_id)
+    document.delete_media("same")
+    assert "same" not in document.media
+    assert document.reference_media().media_id == "first"
+    assert document.selected_segment_id is None
+    assert [segment.media_id for segment in document.all_segments()] == ["first"]
+    document.select_segment(placed.segment_id)
+    document.delete_media("first")
+    assert document.media == {}
+    assert document.tracks == []
+    assert document.reference_media_id is None
+    assert document.selected_segment_id is None
+
+
 def test_negative_playhead_is_clamped():
     document = TimelineDocument()
     document.set_playhead(-2)

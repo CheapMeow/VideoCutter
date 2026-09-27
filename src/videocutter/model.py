@@ -309,6 +309,29 @@ class TimelineDocument:
         if not self.all_segments():
             self.reference_media_id = None
 
+    def delete_media(self, media_id: str) -> None:
+        if media_id not in self.media:
+            raise KeyError(media_id)
+        if self._drag_segment is not None:
+            raise RuntimeError("cannot delete media while dragging a segment")
+        removed_ids = {
+            segment.segment_id
+            for track in self.tracks
+            for segment in track
+            if segment.media_id == media_id
+        }
+        if self.selected_segment_id in removed_ids:
+            self.selected_segment_id = None
+        self.tracks = [
+            [segment for segment in track if segment.media_id != media_id]
+            for track in self.tracks
+        ]
+        self.tracks = [track for track in self.tracks if track]
+        del self.media[media_id]
+        if self.reference_media_id == media_id or not self.all_segments():
+            remaining = self.all_segments()
+            self.reference_media_id = remaining[0].media_id if remaining else None
+
     def set_playhead(self, time_sec: float) -> None:
         time_sec = _require_finite("playhead", time_sec)
         self.playhead = max(0.0, time_sec)
