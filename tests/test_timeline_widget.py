@@ -26,8 +26,10 @@ def lane_y(index: int = 0) -> int:
     return row_top(index) + TRACK_HEIGHT // 2
 
 
-def show_timeline(qapp, document: TimelineDocument | None = None) -> TimelineWidget:
-    widget = TimelineWidget(document or TimelineDocument(), lambda: None)
+def show_timeline(qapp, document: TimelineDocument | None = None, on_status=None) -> TimelineWidget:
+    if on_status is None:
+        on_status = lambda _message: None
+    widget = TimelineWidget(document or TimelineDocument(), lambda: None, on_status)
     widget.resize(900, 480)
     widget.show()
     qapp.processEvents()
@@ -292,5 +294,33 @@ def test_drop_media_places_a_segment(qapp):
         Qt.KeyboardModifier.NoModifier,
     )
     assert widget.event(event)
+    assert event.isAccepted()
     assert len(document.all_segments()) == 1
     assert document.all_segments()[0].timeline_start == pytest.approx(0)
+
+
+def test_drop_rejects_a_different_frame_size(qapp):
+    document = TimelineDocument()
+    document.add_media(media("clip", 3))
+    wide = media("wide", 3)
+    wide.width = 32
+    wide.height = 18
+    document.add_media(wide)
+    document.place_new_segment("clip", 0, 0, True, 0)
+    messages: list[str] = []
+    widget = show_timeline(qapp, document, messages.append)
+    mime = QMimeData()
+    mime.setData(MEDIA_MIME, b"wide")
+    event = QDropEvent(
+        QPointF(0, lane_y(1)),
+        Qt.DropAction.CopyAction,
+        mime,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    widget.event(event)
+    assert not event.isAccepted()
+    assert messages[-1] == "无法放入轨道：素材尺寸为 32×18，轨道输出尺寸为 16×16"
+    assert len(document.all_segments()) == 1
+    assert document.reference_media() is not None
+    assert document.reference_media().media_id == "clip"

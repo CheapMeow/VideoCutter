@@ -3,15 +3,20 @@ import pytest
 from videocutter.model import MediaItem, TimelineDocument, resolve_timeline_start
 
 
-def sample_media(media_id: str, duration: float = 4.0) -> MediaItem:
+def sample_media(
+    media_id: str,
+    duration: float = 4.0,
+    width: int = 16,
+    height: int = 16,
+) -> MediaItem:
     return MediaItem(
         media_id=media_id,
         path=f"{media_id}.mp4",
         duration_sec=duration,
         fps=10.0,
         frame_count=int(duration * 10),
-        width=16,
-        height=16,
+        width=width,
+        height=height,
     )
 
 
@@ -237,3 +242,27 @@ def test_negative_playhead_is_clamped():
     document = TimelineDocument()
     document.set_playhead(-2)
     assert document.playhead == 0
+
+
+def test_output_size_follows_the_first_placed_media():
+    document = TimelineDocument()
+    document.add_media(sample_media("first", 2, width=160, height=90))
+    document.add_media(sample_media("same", 2, width=160, height=90))
+    document.add_media(sample_media("other", 2, width=80, height=60))
+    placed = document.place_new_segment("first", 0, 0, True, 0)
+    assert document.reference_media() is not None
+    assert document.reference_media().media_id == "first"
+    document.place_new_segment("same", 0, 1, True, 0)
+    with pytest.raises(ValueError, match="80x60"):
+        document.place_new_segment("other", 0, 2, True, 0)
+    assert [segment.media_id for segment in document.all_segments()] == ["first", "same"]
+    document.delete_segment(placed.segment_id)
+    assert document.reference_media() is not None
+    assert document.reference_media().media_id == "first"
+    document.delete_segment(document.all_segments()[0].segment_id)
+    assert document.reference_media() is None
+    again = document.place_new_segment("other", 0, 0, True, 0)
+    assert again.media_id == "other"
+    assert document.reference_media() is not None
+    assert document.reference_media().width == 80
+    assert document.reference_media().height == 60

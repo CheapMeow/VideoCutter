@@ -1,6 +1,9 @@
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMainWindow, QSplitter
+from pathlib import Path
 
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QSplitter
+
+from videocutter.export import export_timeline
 from videocutter.model import TimelineDocument
 from videocutter.preview_widget import PreviewWidget
 from videocutter.source_panel import SourcePanel
@@ -33,8 +36,17 @@ QPushButton {
 QPushButton:hover {
     background: #4a4a4a;
 }
+QPushButton#exportButton {
+    font-size: 13px;
+    padding: 0 12px;
+}
 QSplitter::handle {
     background: #111111;
+}
+QStatusBar {
+    background: #141414;
+    color: #ffcc88;
+    border-top: 1px solid #3c3c3c;
 }
 QScrollBar:vertical {
     background: #1e1e1e;
@@ -50,8 +62,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
         self.source_panel = SourcePanel(self.document, self.refresh_views)
+        self.source_panel.export_button.clicked.connect(self._export_video)
         self.preview = PreviewWidget(self.document)
-        self.timeline = TimelineWidget(self.document, self.refresh_views)
+        self.timeline = TimelineWidget(self.document, self.refresh_views, self.show_status)
+        status = self.statusBar()
+        status.setSizeGripEnabled(False)
+        status.setMinimumHeight(28)
         self.timeline_host = TimelineHost(self.timeline)
         right = QSplitter(Qt.Orientation.Vertical)
         right.addWidget(self.preview)
@@ -71,6 +87,28 @@ class MainWindow(QMainWindow):
         self.preview.refresh()
         self.timeline_host.sync()
         self.timeline.update()
+
+    def show_status(self, message: str) -> None:
+        self.statusBar().showMessage(message)
+
+    def _export_video(self) -> None:
+        if self.document.reference_media() is None or not self.document.all_segments():
+            self.show_status("轨道上没有可以输出的视频")
+            return
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "输出视频",
+            "",
+            "AVI 视频 (*.avi)",
+        )
+        if not path:
+            return
+        if Path(path).suffix.lower() != ".avi":
+            path = str(Path(path).with_suffix(".avi"))
+        self.show_status("正在输出视频")
+        QApplication.processEvents()
+        export_timeline(self.document, path)
+        self.show_status(f"已输出视频：{path}")
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

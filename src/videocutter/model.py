@@ -177,6 +177,8 @@ class TimelineDocument:
         self.tracks: list[list[Segment]] = []
         self.playhead = 0.0
         self.selected_segment_id: str | None = None
+        # 第一个放进轨道的素材。输出视频的宽高和帧率都用它。
+        self.reference_media_id: str | None = None
         self._drag_base: list[list[Segment]] | None = None
         self._drag_original: list[list[Segment]] | None = None
         self._drag_segment: Segment | None = None
@@ -228,6 +230,7 @@ class TimelineDocument:
         if self._drag_segment is not None:
             raise RuntimeError("cannot place a segment while dragging")
         item = self.media[media_id]
+        self._require_output_size(item)
         segment = Segment(
             segment_id=new_id(),
             media_id=media_id,
@@ -236,6 +239,8 @@ class TimelineDocument:
             source_out=item.duration_sec,
         )
         self._place(segment, desired_start, track_index, insert_track, snap_threshold)
+        if self.reference_media_id is None:
+            self.reference_media_id = media_id
         return segment
 
     def begin_segment_drag(self, segment_id: str) -> Segment:
@@ -298,6 +303,8 @@ class TimelineDocument:
         self.tracks = [track for track in self.tracks if track]
         if self.selected_segment_id == segment_id:
             self.selected_segment_id = None
+        if not self.all_segments():
+            self.reference_media_id = None
 
     def set_playhead(self, time_sec: float) -> None:
         time_sec = _require_finite("playhead", time_sec)
@@ -322,12 +329,20 @@ class TimelineDocument:
         track[index : index + 1] = [pair[0], pair[1]]
         return pair
 
-    def top_segment_at_playhead(self) -> Segment | None:
+    def reference_media(self) -> MediaItem | None:
+        if self.reference_media_id is None:
+            return None
+        return self.media[self.reference_media_id]
+
+    def top_segment_at(self, time_sec: float) -> Segment | None:
         for track in self.tracks:
             for segment in track:
-                if contains_time(segment, self.playhead):
+                if contains_time(segment, time_sec):
                     return segment
         return None
+
+    def top_segment_at_playhead(self) -> Segment | None:
+        return self.top_segment_at(self.playhead)
 
     def source_time_at_playhead(self) -> tuple[MediaItem, float] | None:
         segment = self.top_segment_at_playhead()
@@ -335,6 +350,22 @@ class TimelineDocument:
             return None
         source_time = segment.source_in + (self.playhead - segment.timeline_start)
         return self.media[segment.media_id], source_time
+
+    def _require_output_size(self, item: MediaItem) -> None:
+        if self.all_segments():
+            if self.reference_media_id is None:
+                raise RuntimeError("timeline segments exist without an output size")
+        elif self.reference_media_id is not None:
+            raise RuntimeError("empty timeline still has an output size")
+        reference = self.reference_media()
+        if reference is None:
+            return
+        if item.width == reference.width and item.height == reference.height:
+            return
+        raise ValueError(
+            f"media size {item.width}x{item.height} does not match "
+            f"output size {reference.width}x{reference.height}"
+        )
 
     def _place(
         self,

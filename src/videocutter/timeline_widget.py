@@ -27,6 +27,19 @@ from videocutter.media import MEDIA_MIME
 from videocutter.model import Segment, TimelineDocument
 
 
+def output_size_message(document: TimelineDocument, media_id: str) -> str | None:
+    reference = document.reference_media()
+    if reference is None:
+        return None
+    item = document.media[media_id]
+    if item.width == reference.width and item.height == reference.height:
+        return None
+    return (
+        f"无法放入轨道：素材尺寸为 {item.width}×{item.height}，"
+        f"轨道输出尺寸为 {reference.width}×{reference.height}"
+    )
+
+
 SEGMENT_COLORS = (
     QColor("#3d7ea6"),
     QColor("#3f8f6b"),
@@ -38,7 +51,10 @@ SEGMENT_COLORS = (
 
 
 def segment_color(media_id: str) -> QColor:
-    return SEGMENT_COLORS[int(media_id[:6], 16) % len(SEGMENT_COLORS)]
+    total = 0
+    for byte in media_id.encode("utf-8"):
+        total = (total * 131 + byte) % 1000003
+    return SEGMENT_COLORS[total % len(SEGMENT_COLORS)]
 
 
 def tick_step(pixels_per_second: float) -> float:
@@ -72,10 +88,11 @@ class TimelineWidget(QWidget):
     # 缩到最远时，可见时间长度至少覆盖最晚一帧时间的这个倍数。
     ZOOM_OUT_SPAN_MULTIPLIER = 8.0
 
-    def __init__(self, document: TimelineDocument, on_changed) -> None:
+    def __init__(self, document: TimelineDocument, on_changed, on_status) -> None:
         super().__init__()
         self.document = document
         self._on_changed = on_changed
+        self._on_status = on_status
         self.view_origin = 0.0
         self.pixels_per_second = 100.0
         self.setMinimumHeight(RULER_HEIGHT + TRACK_HEIGHT)
@@ -264,22 +281,15 @@ class TimelineWidget(QWidget):
         return not (event.modifiers() & blocked)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if self._mode is None and event.mimeData().hasFormat(MEDIA_MIME):
-            event.acceptProposedAction()
-            return
-        event.ignore()
+        self._accept_media_drag(event)
 
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        if self._mode is None and event.mimeData().hasFormat(MEDIA_MIME):
-            event.acceptProposedAction()
-            return
-        event.ignore()
+        self._accept_media_drag(event)
 
     def dropEvent(self, event: QDropEvent) -> None:
-        if self._mode is not None or not event.mimeData().hasFormat(MEDIA_MIME):
-            event.ignore()
+        if not self._accept_media_drag(event):
             return
-        media_id = bytes(event.mimeData().data(MEDIA_MIME)).decode("utf-8")
+        media_id = self._media_id(event.mimeData())
         position = event.position()
         insert_track, track_index = track_target_at_y(position.y(), len(self.document.tracks))
         self.document.place_new_segment(
@@ -289,8 +299,27 @@ class TimelineWidget(QWidget):
             insert_track,
             snap_threshold_seconds(self.pixels_per_second),
         )
+        self._on_status("")
         event.acceptProposedAction()
         self._emit()
+
+    def _accept_media_drag(self, event) -> bool:
+        if self._mode is not None or not event.mimeData().hasFormat(MEDIA_MIME):
+            event.ignore()
+            return False
+        message = output_size_message(self.document, self._media_id(event.mimeData()))
+        if message is not None:
+            self._on_status(message)
+            event.ignore()
+            return False
+        event.acceptProposedAction()
+        return True
+
+    def _media_id(self, mime) -> str:
+        media_id = bytes(mime.data(MEDIA_MIME)).decode("utf-8")
+        if not media_id:
+            raise RuntimeError("dropped media id is empty")
+        return media_id
 
     def _on_edge_scroll(self) -> None:
         if self._mode != "segment" or not self._moved or self._last_pos is None:
