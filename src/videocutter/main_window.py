@@ -16,6 +16,15 @@ from videocutter.source_panel import SourcePanel
 from videocutter.timeline_widget import TimelineHost, TimelineWidget
 
 
+def format_hms(seconds: float) -> str:
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError(f"clock time must be finite and non-negative, got {seconds}")
+    whole = int(math.floor(seconds + 0.5))
+    hours, remain = divmod(whole, 3600)
+    minutes, secs = divmod(remain, 60)
+    return f"{hours:02d}：{minutes:02d}：{secs:02d}"
+
+
 def format_export_progress(
     written: int,
     total: int,
@@ -31,16 +40,13 @@ def format_export_progress(
     if written == 0:
         if estimated_sec is not None:
             raise ValueError("export estimate requires a completed frame")
-        estimate_text = "—"
+        clock = f"{format_hms(elapsed_sec)}/—"
     else:
         if estimated_sec is None or not math.isfinite(estimated_sec) or estimated_sec < 0:
             raise ValueError(f"export estimate must be finite and non-negative, got {estimated_sec}")
-        estimate_text = f"{estimated_sec:.2f} 秒"
+        clock = f"{format_hms(elapsed_sec)}/{format_hms(estimated_sec)}"
     percent = written * 100 // total
-    return (
-        f"正在输出视频：{written}/{total}（{percent}%），"
-        f"已工作 {elapsed_sec:.2f} 秒，预计工作 {estimate_text}"
-    )
+    return f"正在输出视频：{written}/{total}（{percent}%），{clock}"
 
 
 def format_export_result(path: str, elapsed_sec: float) -> str:

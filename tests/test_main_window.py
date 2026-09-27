@@ -137,8 +137,10 @@ def test_export_status_shows_progress_and_elapsed_time(qapp, tmp_path):
     assert output.is_file()
     assert window.export_written == 4
     assert window.export_total == 4
-    assert window.export_progress_message.startswith("正在输出视频：4/4（100%），已工作 ")
-    assert "，预计工作 " in window.export_progress_message
+    worked_text, estimated_text = window.export_progress_message.split("，", 1)[1].split("/")
+    assert window.export_progress_message.startswith("正在输出视频：4/4（100%），")
+    assert worked_text == estimated_text
+    assert len(worked_text.split("：")) == 3
     assert window.source_panel.isEnabled()
     assert window.timeline.isEnabled()
     message = window.statusBar().currentMessage()
@@ -147,17 +149,18 @@ def test_export_status_shows_progress_and_elapsed_time(qapp, tmp_path):
     assert message.endswith(" 秒")
     elapsed = float(message[len(prefix) : -len(" 秒")])
     assert elapsed >= 0
-    assert format_export_progress(0, 4, 0.0, None) == "正在输出视频：0/4（0%），已工作 0.00 秒，预计工作 —"
-    assert format_export_progress(1, 4, 0.5, 2.0) == "正在输出视频：1/4（25%），已工作 0.50 秒，预计工作 2.00 秒"
+    assert format_export_progress(0, 4, 0.0, None) == "正在输出视频：0/4（0%），00：00：00/—"
+    assert format_export_progress(1, 4, 0.5, 2.0) == "正在输出视频：1/4（25%），00：00：01/00：00：02"
+    assert format_export_progress(1, 4, 3661.2, 7322.6) == "正在输出视频：1/4（25%），01：01：01/02：02：03"
     assert format_export_result(str(output), 1.2) == f"已输出视频：{output}，用时 1.20 秒"
     window._export_started = time.perf_counter() - 1.0
     window._report_export_progress(1, 4)
     shown = window.statusBar().currentMessage()
-    assert shown.startswith("正在输出视频：1/4（25%），已工作 ")
-    worked = _status_seconds(shown, "已工作 ")
-    estimated = _status_seconds(shown, "预计工作 ")
+    assert shown.startswith("正在输出视频：1/4（25%），")
+    worked = _clock_seconds(shown.split("，", 1)[1].split("/")[0])
+    estimated = _clock_seconds(shown.split("，", 1)[1].split("/")[1])
     assert worked >= 1
-    assert estimated == pytest.approx(worked * 4, rel=0.05)
+    assert estimated == pytest.approx(worked * 4, abs=2)
     window.close()
 
 
@@ -182,10 +185,9 @@ def test_closing_the_window_stops_the_export(qapp, tmp_path):
     assert window.source_panel.isEnabled()
 
 
-def _status_seconds(message: str, label: str) -> float:
-    start = message.index(label) + len(label)
-    end = message.index(" 秒", start)
-    return float(message[start:end])
+def _clock_seconds(text: str) -> int:
+    hours, minutes, secs = text.split("：")
+    return int(hours) * 3600 + int(minutes) * 60 + int(secs)
 
 
 def _media_id(window: MainWindow, path: Path) -> str:
