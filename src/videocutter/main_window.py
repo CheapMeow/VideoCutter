@@ -88,6 +88,63 @@ QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton, QPushB
     font-size: 13px;
     padding: 0 12px;
 }
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+}
+QRadioButton::indicator:unchecked {
+    border: 2px solid #d0d0d0;
+    border-radius: 8px;
+    background: #1e1e1e;
+}
+QRadioButton::indicator:checked {
+    border: 2px solid #d0d0d0;
+    border-radius: 8px;
+    background: qradialgradient(
+        cx: 0.5, cy: 0.5, radius: 0.45, fx: 0.5, fy: 0.5,
+        stop: 0 #ffffff, stop: 0.55 #ffffff, stop: 0.62 #1e1e1e, stop: 1 #1e1e1e
+    );
+}
+QSpinBox, QDoubleSpinBox {
+    background: #252526;
+    color: #e6e6e6;
+    border: 1px solid #5a5a5a;
+    padding: 2px 6px;
+}
+QSpinBox:disabled, QDoubleSpinBox:disabled {
+    background: #2a2a2a;
+    color: #6a6a6a;
+    border: 1px solid #3c3c3c;
+}
+QRadioButton {
+    spacing: 8px;
+}
+QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+}
+QRadioButton::indicator:unchecked {
+    border: 1px solid #9a9a9a;
+    border-radius: 7px;
+    background: #2a2a2a;
+}
+QRadioButton::indicator:checked {
+    border: 4px solid #4da3ff;
+    border-radius: 7px;
+    background: #e6e6e6;
+}
+QSpinBox, QDoubleSpinBox {
+    color: #e6e6e6;
+    background: #2d2d2d;
+    border: 1px solid #5a5a5a;
+    padding: 2px 4px;
+    font-size: 13px;
+}
+QSpinBox:disabled, QDoubleSpinBox:disabled {
+    color: #6e6e6e;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+}
 QSplitter::handle {
     background: #111111;
 }

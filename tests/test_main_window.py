@@ -50,7 +50,14 @@ def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
     dialog = OutputSettingsDialog(window.output_settings, window)
     assert dialog.fps_min.isChecked()
     assert dialog.bitrate_min.isChecked()
+    assert dialog.fps_specified.isChecked() is False
+    assert dialog.bitrate_specified.isChecked() is False
     assert dialog.fps_spin.isEnabled() is False
+    assert dialog.bitrate_spin.isEnabled() is False
+    style = window.styleSheet()
+    assert "QRadioButton::indicator:checked" in style
+    assert "QSpinBox:disabled" in style
+    assert "QDoubleSpinBox:disabled" in style
     dialog.fps_specified.setChecked(True)
     dialog.fps_spin.setValue(24)
     dialog.bitrate_max.setChecked(True)
