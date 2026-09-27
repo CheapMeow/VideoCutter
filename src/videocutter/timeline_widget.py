@@ -116,6 +116,16 @@ class TimelineWidget(QWidget):
         count = max(1, len(self.document.tracks))
         return RULER_HEIGHT + count * track_stride() + TRACK_GAP
 
+    def discard_gesture(self) -> None:
+        self._mode = None
+        self._moved = False
+        self._pressed_segment_id = None
+        self._last_pos = None
+        self._last_track_index = None
+        self._scroll_timer.stop()
+        if self.mouseGrabber() is self:
+            self.releaseMouse()
+
     def time_at_x(self, x: float) -> float:
         return self.view_origin + x / self.pixels_per_second
 

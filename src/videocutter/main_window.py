@@ -12,6 +12,7 @@ from videocutter.export import (
 )
 from videocutter.model import TimelineDocument
 from videocutter.preview_widget import PreviewWidget
+from videocutter.project import PROJECT_FILTER, load_project, project_output_path, save_project
 from videocutter.source_panel import SourcePanel
 from videocutter.timeline_widget import TimelineHost, TimelineWidget
 
@@ -81,7 +82,7 @@ QPushButton {
 QPushButton:hover {
     background: #4a4a4a;
 }
-QPushButton#exportButton {
+QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton {
     font-size: 13px;
     padding: 0 12px;
 }
@@ -107,7 +108,12 @@ class MainWindow(QMainWindow):
         self._export_stop = False
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
-        self.source_panel = SourcePanel(self.document, self.refresh_views)
+        self.source_panel = SourcePanel(
+            self.document,
+            self.refresh_views,
+            self._open_project,
+            self._save_project,
+        )
         self.source_panel.export_button.clicked.connect(self._export_video)
         self.preview = PreviewWidget(self.document)
         self.timeline = TimelineWidget(self.document, self.refresh_views, self.show_status)
@@ -125,7 +131,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.source_panel)
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([280, 1000])
+        splitter.setSizes([380, 900])
         self.setCentralWidget(splitter)
         self.setStyleSheet(STYLESHEET)
 
@@ -136,6 +142,48 @@ class MainWindow(QMainWindow):
 
     def show_status(self, message: str) -> None:
         self.statusBar().showMessage(message)
+
+    def _open_project(self) -> None:
+        path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "打开工程",
+            "",
+            PROJECT_FILTER,
+        )
+        if not path:
+            return
+        self._open_project_from_path(path)
+
+    def _open_project_from_path(self, path: str) -> None:
+        document = load_project(path)
+        self._replace_document(document)
+        self.show_status(f"已打开工程：{path}")
+
+    def _save_project(self) -> None:
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "保存工程",
+            "",
+            PROJECT_FILTER,
+        )
+        if not path:
+            return
+        self._save_project_to_path(project_output_path(path))
+
+    def _save_project_to_path(self, path: str) -> None:
+        save_project(self.document, path)
+        self.show_status(f"已保存工程：{path}")
+
+    def _replace_document(self, document: TimelineDocument) -> None:
+        self.timeline.discard_gesture()
+        self.preview.release()
+        self.document = document
+        self.source_panel.document = document
+        self.preview.document = document
+        self.timeline.document = document
+        self.timeline.view_origin = 0.0
+        self.source_panel.reload_media_list()
+        self.refresh_views()
 
     def _export_video(self) -> None:
         if self.document.reference_media() is None or not self.document.all_segments():

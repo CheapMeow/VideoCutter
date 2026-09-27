@@ -13,6 +13,7 @@ from tests.support import write_color_video
 from videocutter.geometry import TRACK_HEIGHT, row_top
 from videocutter.main_window import MainWindow, format_export_progress, format_export_result
 from videocutter.media import MEDIA_MIME
+from videocutter.project import project_output_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,8 @@ def test_window_has_source_preview_and_timeline(qapp):
     assert right.widget(0) is window.preview
     assert right.widget(1) is window.timeline_host
     assert window.source_panel.add_button.text() == "+"
+    assert window.source_panel.open_button.text() == "打开"
+    assert window.source_panel.save_button.text() == "保存"
     assert window.source_panel.export_button.text() == "导出"
     assert window.preview.isVisible()
     assert window.timeline.isVisible()
@@ -210,6 +213,47 @@ def _drop_media(window: MainWindow, media_id: str, y: float) -> bool:
     )
     window.timeline.event(event)
     return event.isAccepted()
+
+
+def test_save_and_open_project_restores_the_timeline(qapp, tmp_path):
+    path = tmp_path / "clip.avi"
+    other = tmp_path / "other.avi"
+    write_color_video(path, frame_count=8, fps=10, size=(160, 90))
+    write_color_video(other, frame_count=4, fps=10, size=(160, 90), red_base=80)
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path), str(other)])
+    media_id = _media_id(window, path)
+    assert _drop_media(window, media_id, row_top(0) + TRACK_HEIGHT / 2)
+    window.document.set_playhead(0.3)
+    window.document.select_segment(window.document.all_segments()[0].segment_id)
+    window.document.split_selected()
+    window.timeline.view_origin = 12
+    destination = tmp_path / "edit.mp4"
+    window._save_project_to_path(project_output_path(str(destination)))
+    stored = tmp_path / "edit.vcproj"
+    assert stored.is_file()
+    assert window.statusBar().currentMessage() == f"已保存工程：{stored}"
+    window.document.delete_segment(window.document.tracks[0][0].segment_id)
+    window.document.delete_segment(window.document.tracks[0][0].segment_id)
+    assert window.document.all_segments() == []
+    window._open_project_from_path(str(stored))
+    assert window.statusBar().currentMessage() == f"已打开工程：{stored}"
+    assert window.timeline.view_origin == 0
+    assert window.source_panel.file_list.count() == 1
+    assert window.source_panel.file_list.item(0).data(Qt.ItemDataRole.UserRole) == _media_id(window, path)
+    assert len(window.document.tracks) == 1
+    left, right = window.document.tracks[0]
+    assert left.duration == pytest.approx(0.3)
+    assert right.timeline_start == pytest.approx(0.3)
+    assert right.source_in == pytest.approx(0.3)
+    assert window.document.reference_media().path == str(path.resolve())
+    window.document.set_playhead(0.1)
+    window.refresh_views()
+    assert window.preview.frame_pixmap() is not None
+    window.close()
 
 
 def test_process_starts():

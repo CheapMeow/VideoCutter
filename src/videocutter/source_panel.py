@@ -69,16 +69,26 @@ class MediaList(QListWidget):
 
 
 class SourcePanel(QWidget):
-    def __init__(self, document: TimelineDocument, on_changed) -> None:
+    def __init__(self, document: TimelineDocument, on_changed, on_open_project, on_save_project) -> None:
         super().__init__()
         self.document = document
         self._on_changed = on_changed
         self.setAcceptDrops(True)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(360)
         self.add_button = QPushButton("+")
         self.add_button.setFixedSize(32, 32)
         self.add_button.setToolTip("添加视频")
         self.add_button.clicked.connect(self._pick_files)
+        self.open_button = QPushButton("打开")
+        self.open_button.setObjectName("openButton")
+        self.open_button.setFixedHeight(32)
+        self.open_button.setToolTip("打开工程")
+        self.open_button.clicked.connect(on_open_project)
+        self.save_button = QPushButton("保存")
+        self.save_button.setObjectName("saveButton")
+        self.save_button.setFixedHeight(32)
+        self.save_button.setToolTip("保存工程")
+        self.save_button.clicked.connect(on_save_project)
         self.export_button = QPushButton("导出")
         self.export_button.setObjectName("exportButton")
         self.export_button.setFixedHeight(32)
@@ -87,6 +97,8 @@ class SourcePanel(QWidget):
         header = QHBoxLayout()
         header.addWidget(title)
         header.addStretch(1)
+        header.addWidget(self.open_button)
+        header.addWidget(self.save_button)
         header.addWidget(self.export_button)
         header.addWidget(self.add_button)
         self.file_list = MediaList(self)
@@ -147,6 +159,14 @@ class SourcePanel(QWidget):
             height=int(probed["height"]),
         )
         self.document.add_media(item)
+        self._append_media_row(item)
+
+    def reload_media_list(self) -> None:
+        self.file_list.clear()
+        for item in self.document.media.values():
+            self._append_media_row(item)
+
+    def _append_media_row(self, item: MediaItem) -> None:
         row = QListWidgetItem(f"{Path(item.path).name}  ({format_duration(item.duration_sec)})")
         row.setData(Qt.ItemDataRole.UserRole, item.media_id)
         row.setToolTip(item.path)
