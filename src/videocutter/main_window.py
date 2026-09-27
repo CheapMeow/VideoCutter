@@ -22,7 +22,7 @@ def format_hms(seconds: float) -> str:
     whole = int(math.floor(seconds + 0.5))
     hours, remain = divmod(whole, 3600)
     minutes, secs = divmod(remain, 60)
-    return f"{hours:02d}：{minutes:02d}：{secs:02d}"
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
 def format_export_progress(
