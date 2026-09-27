@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QRubberBand,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
@@ -66,12 +67,14 @@ class MediaList(QListWidget):
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
         self.setDefaultDropAction(Qt.DropAction.CopyAction)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.viewport().setAcceptDrops(True)
         self.viewport().installEventFilter(self)
         self._item_delegate = MediaItemDelegate(self)
         self.setItemDelegate(self._item_delegate)
+        self._rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self.viewport())
+        self._rubber_origin = None
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -84,7 +87,34 @@ class MediaList(QListWidget):
                     raise RuntimeError("media item is missing an id")
                 self._panel.remove_media(media_id)
                 return
+            if item is None:
+                self._rubber_origin = event.position().toPoint()
+                self._rubber_band.setGeometry(QRect(self._rubber_origin, self._rubber_origin))
+                return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._rubber_origin is not None:
+            rect = QRect(self._rubber_origin, event.position().toPoint()).normalized()
+            self._rubber_band.setGeometry(rect)
+            self._rubber_band.show()
+            self._select_items_in_rect(rect)
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._rubber_origin is not None:
+            rect = QRect(self._rubber_origin, event.position().toPoint()).normalized()
+            self._rubber_band.hide()
+            self._rubber_origin = None
+            self._select_items_in_rect(rect)
+            return
+        super().mouseReleaseEvent(event)
+
+    def _select_items_in_rect(self, rect: QRect) -> None:
+        for row in range(self.count()):
+            item = self.item(row)
+            item.setSelected(self.visualItemRect(item).intersects(rect))
 
     def mimeTypes(self) -> list[str]:
         return [MEDIA_MIME]

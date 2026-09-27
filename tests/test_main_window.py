@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -74,6 +74,40 @@ def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
     assert dialog.fps_min.font().pixelSize() == 13
     assert dialog.ok_button.font().pixelSize() == 13
     assert dialog.cancel_button.font().pixelSize() == 13
+    window.close()
+
+
+def test_rubber_band_selects_the_covered_media(qapp, tmp_path):
+    paths = []
+    for index in range(3):
+        path = tmp_path / f"clip{index}.avi"
+        write_color_video(path, frame_count=4, fps=10, size=(160, 90), red_base=index * 20)
+        paths.append(path)
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path) for path in paths])
+    file_list = window.source_panel.file_list
+    viewport = file_list.viewport()
+    assert viewport.height() > file_list.visualItemRect(file_list.item(2)).bottom() + 8
+    start = QPoint(12, viewport.height() - 4)
+    target = file_list.visualItemRect(file_list.item(1)).center()
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(viewport, target)
+    assert file_list._rubber_band.isVisible()
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, target)
+    assert not file_list._rubber_band.isVisible()
+    selected = [
+        file_list.item(row).data(Qt.ItemDataRole.UserRole)
+        for row in range(file_list.count())
+        if file_list.item(row).isSelected()
+    ]
+    assert selected == [
+        file_list.item(1).data(Qt.ItemDataRole.UserRole),
+        file_list.item(2).data(Qt.ItemDataRole.UserRole),
+    ]
+    assert "QRubberBand" in window.styleSheet()
     window.close()
 
 

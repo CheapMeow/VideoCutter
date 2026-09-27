@@ -75,6 +75,10 @@ QListWidget::item {
 QListWidget::item:selected {
     background: #094771;
 }
+QRubberBand {
+    background: rgba(0, 120, 215, 50);
+    border: 1px solid #0078d7;
+}
 QPushButton {
     background: #3a3a3a;
     border: 1px solid #5a5a5a;
