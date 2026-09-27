@@ -84,7 +84,7 @@ QPushButton {
 QPushButton:hover {
     background: #4a4a4a;
 }
-QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton, QPushButton#settingsButton {
+QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton, QPushButton#settingsButton, QPushButton#dialogButton {
     font-size: 13px;
     padding: 0 12px;
 }

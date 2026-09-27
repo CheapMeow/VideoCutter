@@ -66,6 +66,12 @@ def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
     assert window.output_settings.fps_mode == "specified"
     assert window.output_settings.fps_value == pytest.approx(24)
     assert window.output_settings.bitrate_mode == "max"
+    window.show()
+    dialog.show()
+    qapp.processEvents()
+    assert dialog.fps_min.font().pixelSize() == 13
+    assert dialog.ok_button.font().pixelSize() == 13
+    assert dialog.cancel_button.font().pixelSize() == 13
     window.close()
 
 
