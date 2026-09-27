@@ -176,6 +176,7 @@ class TimelineDocument:
         self.media: dict[str, MediaItem] = {}
         self.tracks: list[list[Segment]] = []
         self.playhead = 0.0
+        self.selected_segment_id: str | None = None
         self._drag_base: list[list[Segment]] | None = None
         self._drag_original: list[list[Segment]] | None = None
         self._drag_segment: Segment | None = None
@@ -281,6 +282,22 @@ class TimelineDocument:
             raise RuntimeError("no segment drag is active")
         self.tracks = self._drag_original
         self._clear_drag()
+
+    def select_segment(self, segment_id: str | None) -> None:
+        if segment_id is not None:
+            self.find_segment(segment_id)
+        self.selected_segment_id = segment_id
+
+    def delete_segment(self, segment_id: str) -> None:
+        if self._drag_segment is not None:
+            raise RuntimeError("cannot delete a segment while dragging")
+        track_index, _segment = self.find_segment(segment_id)
+        self.tracks[track_index] = [
+            item for item in self.tracks[track_index] if item.segment_id != segment_id
+        ]
+        self.tracks = [track for track in self.tracks if track]
+        if self.selected_segment_id == segment_id:
+            self.selected_segment_id = None
 
     def set_playhead(self, time_sec: float) -> None:
         time_sec = _require_finite("playhead", time_sec)

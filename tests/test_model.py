@@ -193,6 +193,32 @@ def test_latest_material_time_uses_source_duration_and_segment_end():
     assert document.latest_material_time() == pytest.approx(placed.timeline_end)
 
 
+def test_delete_segment_removes_only_that_segment_and_empty_tracks():
+    document = TimelineDocument()
+    document.add_media(sample_media("a", 2))
+    document.add_media(sample_media("b", 2))
+    first = document.place_new_segment("a", 0, 0, True, 0)
+    second = document.place_new_segment("b", 0, 1, True, 0)
+    document.select_segment(first.segment_id)
+    document.delete_segment(first.segment_id)
+    assert document.selected_segment_id is None
+    assert [segment.segment_id for segment in document.all_segments()] == [second.segment_id]
+    assert len(document.tracks) == 1
+    assert "a" in document.media
+    with pytest.raises(KeyError):
+        document.delete_segment(first.segment_id)
+
+
+def test_delete_segment_rejects_an_active_drag():
+    document = TimelineDocument()
+    document.add_media(sample_media("a", 2))
+    segment = document.place_new_segment("a", 0, 0, True, 0)
+    document.begin_segment_drag(segment.segment_id)
+    with pytest.raises(RuntimeError):
+        document.delete_segment(segment.segment_id)
+    document.cancel_segment_drag()
+
+
 def test_negative_playhead_is_clamped():
     document = TimelineDocument()
     document.set_playhead(-2)

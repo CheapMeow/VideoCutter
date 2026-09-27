@@ -191,6 +191,28 @@ def test_vertical_drag_inserts_below_existing_tracks(qapp):
     assert document.tracks[2][0].segment_id == top.segment_id
 
 
+def test_delete_key_removes_the_clicked_segment(qapp):
+    document = TimelineDocument()
+    document.add_media(media("a", 2))
+    document.add_media(media("b", 2))
+    first = document.place_new_segment("a", 0, 0, True, 0)
+    second = document.place_new_segment("b", 4, 0, False, 0)
+    widget = show_timeline(qapp, document)
+    send_mouse(widget, "press", 40, lane_y())
+    send_mouse(widget, "release", 40, lane_y())
+    assert document.selected_segment_id == first.segment_id
+    widget.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(widget, Qt.Key.Key_Delete)
+    assert document.selected_segment_id is None
+    assert [segment.segment_id for segment in document.all_segments()] == [second.segment_id]
+    assert "a" in document.media
+    send_mouse(widget, "press", 10, 10)
+    send_mouse(widget, "release", 10, 10)
+    QTest.keyClick(widget, Qt.Key.Key_Delete)
+    assert [segment.segment_id for segment in document.all_segments()] == [second.segment_id]
+
+
 def test_split_with_s_when_the_timeline_has_focus(qapp):
     document = TimelineDocument()
     document.add_media(media("a", 4))

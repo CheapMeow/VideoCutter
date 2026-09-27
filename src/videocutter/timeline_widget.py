@@ -93,6 +93,7 @@ class TimelineWidget(QWidget):
         self._grab_offset = 0.0
         self._last_pos: QPointF | None = None
         self._last_track_index: int | None = None
+        self._pressed_segment_id: str | None = None
 
     def preferred_height(self) -> int:
         count = max(1, len(self.document.tracks))
@@ -172,8 +173,10 @@ class TimelineWidget(QWidget):
         self._last_track_index = None
         if segment is None:
             self._mode = "empty"
+            self._pressed_segment_id = None
         else:
             self._mode = "segment"
+            self._pressed_segment_id = segment.segment_id
             self._grab_offset = self.time_at_x(pos.x()) - segment.timeline_start
             self.document.begin_segment_drag(segment.segment_id)
         self.grabMouse()
@@ -211,8 +214,10 @@ class TimelineWidget(QWidget):
             else:
                 self.document.cancel_segment_drag()
                 self.document.set_playhead(max(0.0, self.time_at_x(pos.x())))
+            self.document.select_segment(self._pressed_segment_id)
         elif self._mode == "empty" and not self._moved:
             self.document.set_playhead(max(0.0, self.time_at_x(pos.x())))
+            self.document.select_segment(None)
         self._mode = None
         self._moved = False
         self._last_pos = None
@@ -222,24 +227,28 @@ class TimelineWidget(QWidget):
         self._emit()
 
     def keyPressEvent(self, event) -> None:
-        if (
-            event.key() == Qt.Key.Key_S
-            and not event.isAutoRepeat()
-            and self.hasFocus()
-            and not (
-                event.modifiers()
-                & (
-                    Qt.KeyboardModifier.ControlModifier
-                    | Qt.KeyboardModifier.AltModifier
-                    | Qt.KeyboardModifier.MetaModifier
-                )
-            )
-        ):
+        if self._plain_key(event, Qt.Key.Key_S):
             self.document.split_at_playhead()
             event.accept()
             self._emit()
             return
+        if self._plain_key(event, Qt.Key.Key_Delete) or self._plain_key(event, Qt.Key.Key_Backspace):
+            if self.document.selected_segment_id is not None:
+                self.document.delete_segment(self.document.selected_segment_id)
+            event.accept()
+            self._emit()
+            return
         super().keyPressEvent(event)
+
+    def _plain_key(self, event, key) -> bool:
+        if event.key() != key or event.isAutoRepeat() or not self.hasFocus():
+            return False
+        blocked = (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier
+        )
+        return not (event.modifiers() & blocked)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if self._mode is None and event.mimeData().hasFormat(MEDIA_MIME):
@@ -348,7 +357,10 @@ class TimelineWidget(QWidget):
     def _paint_segment(self, painter: QPainter, track_index: int, segment: Segment) -> None:
         rect = self._segment_rect(track_index, segment)
         color = segment_color(segment.media_id)
-        painter.setPen(QPen(color.lighter(130), 1))
+        if segment.segment_id == self.document.selected_segment_id:
+            painter.setPen(QPen(QColor("#ffffff"), 2))
+        else:
+            painter.setPen(QPen(color.lighter(130), 1))
         painter.setBrush(color)
         painter.drawRoundedRect(rect, 4, 4)
         if rect.width() < 36:
