@@ -42,10 +42,10 @@ def segment_color(media_id: str) -> QColor:
 
 
 def tick_step(pixels_per_second: float) -> float:
-    for step in (0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600):
+    for step in (0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 21600, 86400):
         if step * pixels_per_second >= 80:
             return float(step)
-    return 600.0
+    return 86400.0
 
 
 def format_tick(seconds: float) -> str:
@@ -53,9 +53,15 @@ def format_tick(seconds: float) -> str:
         if abs(seconds - round(seconds)) < 1e-6:
             return f"{int(round(seconds))}s"
         return f"{seconds:.1f}s"
-    minutes = int(seconds // 60)
-    remain = seconds - minutes * 60
-    return f"{minutes}:{remain:04.1f}"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        remain = seconds - minutes * 60
+        return f"{minutes}:{remain:04.1f}"
+    hours = int(seconds // 3600)
+    remain = seconds - hours * 3600
+    minutes = int(remain // 60)
+    secs = remain - minutes * 60
+    return f"{hours}:{minutes:02d}:{secs:04.1f}"
 
 
 class TimelineWidget(QWidget):
@@ -63,6 +69,8 @@ class TimelineWidget(QWidget):
     MIN_PIXELS_PER_SECOND = 8.0
     MAX_PIXELS_PER_SECOND = 4000.0
     ZOOM_FACTOR = 1.15
+    # 缩到最远时，可见时间长度至少覆盖最晚一帧时间的这个倍数。
+    ZOOM_OUT_SPAN_MULTIPLIER = 8.0
 
     def __init__(self, document: TimelineDocument, on_changed) -> None:
         super().__init__()
@@ -96,12 +104,23 @@ class TimelineWidget(QWidget):
     def x_at_time(self, time_sec: float) -> float:
         return (time_sec - self.view_origin) * self.pixels_per_second
 
+    def minimum_pixels_per_second(self) -> float:
+        width = self.width()
+        if width <= 0:
+            raise RuntimeError(f"timeline width must be positive, got {width}")
+        latest = self.document.latest_material_time()
+        if latest <= 0:
+            return self.MIN_PIXELS_PER_SECOND
+        content_span = latest * self.ZOOM_OUT_SPAN_MULTIPLIER
+        content_scale = width / content_span
+        return min(self.MIN_PIXELS_PER_SECOND, content_scale)
+
     def zoom_at(self, x: float, factor: float) -> None:
         if factor <= 0:
             raise ValueError(f"zoom factor must be positive, got {factor}")
         anchor = self.time_at_x(x)
         new_scale = self.pixels_per_second * factor
-        new_scale = min(self.MAX_PIXELS_PER_SECOND, max(self.MIN_PIXELS_PER_SECOND, new_scale))
+        new_scale = min(self.MAX_PIXELS_PER_SECOND, max(self.minimum_pixels_per_second(), new_scale))
         self.pixels_per_second = new_scale
         self.view_origin = max(0.0, anchor - x / new_scale)
 

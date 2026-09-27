@@ -184,6 +184,15 @@ def test_drag_cancel_restores_the_original_track():
     assert len(document.tracks) == 1
 
 
+def test_latest_material_time_uses_source_duration_and_segment_end():
+    document = TimelineDocument()
+    document.add_media(sample_media("long", 7200))
+    assert document.latest_material_time() == pytest.approx(7200)
+    document.add_media(sample_media("short", 2))
+    placed = document.place_new_segment("short", 8000, 0, True, 0)
+    assert document.latest_material_time() == pytest.approx(placed.timeline_end)
+
+
 def test_negative_playhead_is_clamped():
     document = TimelineDocument()
     document.set_playhead(-2)

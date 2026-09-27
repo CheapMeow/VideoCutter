@@ -195,6 +195,15 @@ class TimelineDocument:
             result.extend(track)
         return result
 
+    def latest_material_time(self) -> float:
+        # 素材最后一帧的时间，以及轨道上段落最后一帧所在的时间，取更晚的一个。
+        latest = 0.0
+        for item in self.media.values():
+            latest = max(latest, item.duration_sec)
+        for segment in self.all_segments():
+            latest = max(latest, segment.timeline_end)
+        return latest
+
     def find_segment(self, segment_id: str) -> tuple[int, Segment]:
         for index, track in enumerate(self.tracks):
             for segment in track:

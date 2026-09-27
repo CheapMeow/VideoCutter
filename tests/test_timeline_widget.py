@@ -83,6 +83,32 @@ def test_drag_empty_pans_the_timeline(qapp):
     assert widget.document.playhead == 0
 
 
+def test_zoom_out_reaches_several_times_the_latest_frame(qapp):
+    document = TimelineDocument()
+    document.add_media(media("long", 3600))
+    document.place_new_segment("long", 1200, 0, True, 0)
+    widget = show_timeline(qapp, document)
+    qapp.processEvents()
+    for _ in range(80):
+        widget.zoom_at(100, 1 / widget.ZOOM_FACTOR)
+    latest = document.latest_material_time()
+    visible = widget.width() / widget.pixels_per_second
+    assert latest == pytest.approx(4800)
+    assert visible == pytest.approx(latest * widget.ZOOM_OUT_SPAN_MULTIPLIER)
+
+
+def test_short_material_can_still_zoom_out_to_the_pixel_floor(qapp):
+    document = TimelineDocument()
+    document.add_media(media("short", 5))
+    document.place_new_segment("short", 0, 0, True, 0)
+    widget = show_timeline(qapp, document)
+    qapp.processEvents()
+    for _ in range(40):
+        widget.zoom_at(100, 1 / widget.ZOOM_FACTOR)
+    assert widget.pixels_per_second == pytest.approx(widget.MIN_PIXELS_PER_SECOND)
+    assert widget.width() / widget.pixels_per_second > document.latest_material_time() * widget.ZOOM_OUT_SPAN_MULTIPLIER
+
+
 def test_wheel_zooms_around_the_cursor(qapp):
     widget = show_timeline(qapp)
     widget.pixels_per_second = 100
