@@ -241,7 +241,7 @@ class TimelineWidget(QWidget):
 
     def keyPressEvent(self, event) -> None:
         if self._plain_key(event, Qt.Key.Key_S):
-            self.document.split_at_playhead()
+            self.document.split_selected()
             event.accept()
             self._emit()
             return

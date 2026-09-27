@@ -82,6 +82,7 @@ def test_drop_file_drag_to_timeline_and_show_the_frame(qapp, tmp_path):
     assert color.blue() == pytest.approx(20, abs=12)
 
     window.document.set_playhead(0.4)
+    window.document.select_segment(window.document.all_segments()[0].segment_id)
     window.activateWindow()
     window.timeline.setFocus(Qt.FocusReason.OtherFocusReason)
     qapp.processEvents()

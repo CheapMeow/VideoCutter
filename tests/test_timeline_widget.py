@@ -228,21 +228,29 @@ def test_delete_key_removes_the_clicked_segment(qapp):
     assert [segment.segment_id for segment in document.all_segments()] == [second.segment_id]
 
 
-def test_split_with_s_when_the_timeline_has_focus(qapp):
+def test_split_with_s_only_the_selected_segment(qapp):
     document = TimelineDocument()
     document.add_media(media("a", 4))
-    document.place_new_segment("a", 0, 0, True, 0)
+    document.add_media(media("b", 4))
+    selected = document.place_new_segment("a", 0, 0, True, 0)
+    other = document.place_new_segment("b", 0, 1, True, 0)
     widget = show_timeline(qapp, document)
-    send_mouse(widget, "press", 200, 10)
-    send_mouse(widget, "release", 200, 10)
-    assert document.playhead == pytest.approx(2)
-    widget.setFocus()
+    send_mouse(widget, "press", 150, lane_y(0))
+    send_mouse(widget, "release", 150, lane_y(0))
+    assert document.selected_segment_id == selected.segment_id
+    assert document.playhead == pytest.approx(1.5)
     qapp.processEvents()
     assert widget.hasFocus()
     QTest.keyClick(widget, Qt.Key.Key_S)
+    assert document.tracks[0][0].timeline_end == pytest.approx(1.5)
+    assert document.tracks[0][1].timeline_start == pytest.approx(1.5)
+    assert len(document.tracks[1]) == 1
+    assert document.tracks[1][0].segment_id == other.segment_id
+    document.select_segment(None)
+    document.set_playhead(1)
+    QTest.keyClick(widget, Qt.Key.Key_S)
+    assert len(document.tracks[1]) == 1
     assert len(document.tracks[0]) == 2
-    assert document.tracks[0][0].timeline_end == pytest.approx(2)
-    assert document.tracks[0][1].timeline_start == pytest.approx(2)
 
 
 def test_edge_scroll_follows_the_pointer_past_either_side(qapp):

@@ -303,21 +303,24 @@ class TimelineDocument:
         time_sec = _require_finite("playhead", time_sec)
         self.playhead = max(0.0, time_sec)
 
-    def split_at_playhead(self) -> list[tuple[Segment, Segment]]:
+    def split_selected(self) -> tuple[Segment, Segment] | None:
+        # 只分割当前选中的那一段，并且当前帧必须落在这段内部。
         if self._drag_segment is not None:
             raise RuntimeError("cannot split while dragging a segment")
-        created: list[tuple[Segment, Segment]] = []
-        for track in self.tracks:
-            replacements: list[Segment] = []
-            for segment in track:
-                pair = split_segment(segment, self.playhead)
-                if pair is None:
-                    replacements.append(segment)
-                else:
-                    replacements.extend(pair)
-                    created.append(pair)
-            track[:] = replacements
-        return created
+        if self.selected_segment_id is None:
+            return None
+        track_index, segment = self.find_segment(self.selected_segment_id)
+        pair = split_segment(segment, self.playhead)
+        if pair is None:
+            return None
+        track = self.tracks[track_index]
+        index = next(
+            item_index
+            for item_index, item in enumerate(track)
+            if item.segment_id == segment.segment_id
+        )
+        track[index : index + 1] = [pair[0], pair[1]]
+        return pair
 
     def top_segment_at_playhead(self) -> Segment | None:
         for track in self.tracks:

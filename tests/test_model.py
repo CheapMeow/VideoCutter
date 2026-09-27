@@ -97,14 +97,15 @@ def test_split_keeps_source_ranges_and_ignores_edges():
     document = TimelineDocument()
     document.add_media(sample_media("a", 4))
     segment = document.place_new_segment("a", 0, 0, True, 0)
+    document.select_segment(segment.segment_id)
     document.set_playhead(0)
-    assert document.split_at_playhead() == []
+    assert document.split_selected() is None
     document.set_playhead(segment.timeline_end)
-    assert document.split_at_playhead() == []
+    assert document.split_selected() is None
     document.set_playhead(1.5)
-    pairs = document.split_at_playhead()
-    assert len(pairs) == 1
-    left, right = pairs[0]
+    pair = document.split_selected()
+    assert pair is not None
+    left, right = pair
     assert left.timeline_start == pytest.approx(0)
     assert left.timeline_end == pytest.approx(1.5)
     assert left.source_in == pytest.approx(0)
@@ -115,16 +116,28 @@ def test_split_keeps_source_ranges_and_ignores_edges():
     assert len(document.tracks[0]) == 2
 
 
-def test_split_every_track_under_the_playhead():
+def test_split_only_the_selected_segment():
     document = TimelineDocument()
     document.add_media(sample_media("a", 4))
     document.add_media(sample_media("b", 4))
-    document.place_new_segment("a", 0, 0, True, 0)
-    document.place_new_segment("b", 0, 0, True, 0)
+    selected = document.place_new_segment("a", 0, 0, True, 0)
+    other = document.place_new_segment("b", 0, 1, True, 0)
     document.set_playhead(2)
-    assert len(document.split_at_playhead()) == 2
-    assert len(document.tracks) == 2
-    assert all(len(track) == 2 for track in document.tracks)
+    assert document.split_selected() is None
+    assert len(document.tracks[0]) == 1
+    assert len(document.tracks[1]) == 1
+    document.select_segment(selected.segment_id)
+    document.set_playhead(0)
+    assert document.split_selected() is None
+    document.set_playhead(5)
+    assert document.split_selected() is None
+    document.set_playhead(2)
+    pair = document.split_selected()
+    assert pair is not None
+    assert pair[0].segment_id == selected.segment_id
+    assert len(document.tracks[0]) == 2
+    assert len(document.tracks[1]) == 1
+    assert document.tracks[1][0].segment_id == other.segment_id
 
 
 def test_upper_track_supplies_the_current_frame():
@@ -144,9 +157,10 @@ def test_upper_track_supplies_the_current_frame():
 def test_trimmed_segment_maps_playhead_back_to_source_time():
     document = TimelineDocument()
     document.add_media(sample_media("a", 4))
-    document.place_new_segment("a", 0, 0, True, 0)
+    segment = document.place_new_segment("a", 0, 0, True, 0)
+    document.select_segment(segment.segment_id)
     document.set_playhead(1)
-    document.split_at_playhead()
+    document.split_selected()
     document.set_playhead(2.5)
     located = document.source_time_at_playhead()
     assert located is not None
