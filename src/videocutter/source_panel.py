@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QMimeData, QRect, Qt
-from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent, QPainter
+from PySide6.QtCore import QEvent, QMimeData, QRect, QSize, Qt
+from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QIcon, QKeyEvent, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -19,11 +19,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon
 from videocutter.media import MEDIA_MIME, VIDEO_SUFFIXES, format_duration, probe_video
 from videocutter.model import MediaItem, TimelineDocument, new_id
 
 
 REMOVE_MARK_WIDTH = 28
+_ICON_BUTTON_SIZE = 32
+
+
+def _icon_button(icon: QIcon, tooltip: str, object_name: str) -> QPushButton:
+    button = QPushButton()
+    button.setObjectName(object_name)
+    button.setIcon(icon)
+    button.setIconSize(QSize(_ICON_BUTTON_SIZE - 8, _ICON_BUTTON_SIZE - 8))
+    button.setFixedSize(_ICON_BUTTON_SIZE, _ICON_BUTTON_SIZE)
+    button.setToolTip(tooltip)
+    return button
 
 
 class MediaItemDelegate(QStyledItemDelegate):
@@ -181,25 +193,13 @@ class SourcePanel(QWidget):
         self.add_button.setFixedSize(32, 32)
         self.add_button.setToolTip("添加视频")
         self.add_button.clicked.connect(self._pick_files)
-        self.open_button = QPushButton("打开")
-        self.open_button.setObjectName("openButton")
-        self.open_button.setFixedHeight(32)
-        self.open_button.setToolTip("打开工程")
+        self.open_button = _icon_button(open_project_icon(), "打开工程", "openButton")
         self.open_button.clicked.connect(on_open_project)
-        self.save_button = QPushButton("保存")
-        self.save_button.setObjectName("saveButton")
-        self.save_button.setFixedHeight(32)
-        self.save_button.setToolTip("保存工程")
+        self.save_button = _icon_button(save_project_icon(), "保存工程", "saveButton")
         self.save_button.clicked.connect(on_save_project)
-        self.settings_button = QPushButton("设置")
-        self.settings_button.setObjectName("settingsButton")
-        self.settings_button.setFixedHeight(32)
-        self.settings_button.setToolTip("输出帧率和码率")
+        self.settings_button = _icon_button(settings_icon(), "设置", "settingsButton")
         self.settings_button.clicked.connect(on_edit_output_settings)
-        self.export_button = QPushButton("导出")
-        self.export_button.setObjectName("exportButton")
-        self.export_button.setFixedHeight(32)
-        self.export_button.setToolTip("按当前轨道输出视频")
+        self.export_button = _icon_button(export_icon(), "导出", "exportButton")
         title = QLabel("素材")
         header = QHBoxLayout()
         header.addWidget(title)

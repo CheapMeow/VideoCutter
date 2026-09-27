@@ -33,10 +33,17 @@ def test_window_has_source_preview_and_timeline(qapp):
     assert right.widget(0) is window.preview
     assert right.widget(1) is window.timeline_host
     assert window.source_panel.add_button.text() == "+"
-    assert window.source_panel.open_button.text() == "打开"
-    assert window.source_panel.save_button.text() == "保存"
-    assert window.source_panel.settings_button.text() == "设置"
-    assert window.source_panel.export_button.text() == "导出"
+    for button, tooltip in (
+        (window.source_panel.open_button, "打开工程"),
+        (window.source_panel.save_button, "保存工程"),
+        (window.source_panel.settings_button, "设置"),
+        (window.source_panel.export_button, "导出"),
+    ):
+        assert button.text() == ""
+        assert button.toolTip() == tooltip
+        assert button.icon().isNull() is False
+        assert button.size().width() == 32
+        assert button.size().height() == 32
     assert window.output_settings.fps_mode == "min"
     assert window.output_settings.bitrate_mode == "min"
     assert window.preview.isVisible()

@@ -88,9 +88,12 @@ QPushButton {
 QPushButton:hover {
     background: #4a4a4a;
 }
-QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton, QPushButton#settingsButton, QPushButton#dialogButton {
+QPushButton#dialogButton {
     font-size: 13px;
     padding: 0 12px;
+}
+QPushButton#exportButton, QPushButton#openButton, QPushButton#saveButton, QPushButton#settingsButton {
+    padding: 0;
 }
 QRadioButton::indicator {
     width: 16px;
