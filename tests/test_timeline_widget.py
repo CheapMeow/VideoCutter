@@ -90,6 +90,25 @@ def test_drag_empty_pans_the_timeline(qapp):
     assert widget.document.playhead == 0
 
 
+def test_ruler_click_keeps_the_selected_segment(qapp):
+    document = TimelineDocument()
+    document.add_media(media("a", 4))
+    segment = document.place_new_segment("a", 0, 0, True, 0)
+    widget = show_timeline(qapp, document)
+    send_mouse(widget, "press", 80, lane_y())
+    send_mouse(widget, "release", 80, lane_y())
+    assert document.selected_segment_id == segment.segment_id
+    send_mouse(widget, "press", 150, 8)
+    send_mouse(widget, "release", 150, 8)
+    assert document.playhead == pytest.approx(1.5)
+    assert document.selected_segment_id == segment.segment_id
+    send_mouse(widget, "press", 200, 8)
+    send_mouse(widget, "move", 360, -30)
+    send_mouse(widget, "release", 400, 90)
+    assert document.playhead == pytest.approx(4)
+    assert document.selected_segment_id == segment.segment_id
+
+
 def test_ruler_drag_scrubs_the_playhead_outside_the_widget(qapp):
     widget = show_timeline(qapp)
     widget.view_origin = 1.0

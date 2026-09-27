@@ -191,7 +191,6 @@ class TimelineWidget(QWidget):
         if pos.y() < RULER_HEIGHT:
             self._mode = "playhead"
             self._pressed_segment_id = None
-            self.document.select_segment(None)
             self._scrub_playhead(pos.x())
         elif segment is None:
             self._mode = "empty"
