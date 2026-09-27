@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon
+from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon, stop_export_icon
 from videocutter.media import MEDIA_MIME, VIDEO_SUFFIXES, format_duration, probe_video
 from videocutter.model import MediaItem, TimelineDocument, new_id
 
@@ -166,6 +166,9 @@ class MediaList(QListWidget):
             QEvent.Type.DragMove,
             QEvent.Type.Drop,
         ):
+            if self._panel._exporting:
+                event.ignore()
+                return True
             paths = local_files_from_mime(event.mimeData())
             if paths is not None:
                 event.acceptProposedAction()
@@ -187,6 +190,7 @@ class SourcePanel(QWidget):
         super().__init__()
         self.document = document
         self._on_changed = on_changed
+        self._exporting = False
         self.setAcceptDrops(True)
         self.setMinimumWidth(460)
         self.add_button = QPushButton("+")
@@ -216,23 +220,48 @@ class SourcePanel(QWidget):
         layout.addWidget(self.file_list, 1)
 
     def add_paths(self, paths: list[str]) -> None:
+        if self._exporting:
+            raise RuntimeError("cannot add media while exporting")
         for path in paths:
             self._add_path(path)
         self._on_changed()
 
+    def set_exporting(self, exporting: bool) -> None:
+        self._exporting = exporting
+        self.add_button.setEnabled(not exporting)
+        self.open_button.setEnabled(not exporting)
+        self.save_button.setEnabled(not exporting)
+        self.settings_button.setEnabled(not exporting)
+        self.file_list.setEnabled(not exporting)
+        if exporting:
+            self.export_button.setIcon(stop_export_icon())
+            self.export_button.setToolTip("终止导出")
+            return
+        self.export_button.setIcon(export_icon())
+        self.export_button.setToolTip("导出")
+
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if self._exporting:
+            event.ignore()
+            return
         if local_files_from_mime(event.mimeData()) is not None:
             event.acceptProposedAction()
             return
         event.ignore()
 
     def dragMoveEvent(self, event) -> None:
+        if self._exporting:
+            event.ignore()
+            return
         if local_files_from_mime(event.mimeData()) is not None:
             event.acceptProposedAction()
             return
         event.ignore()
 
     def dropEvent(self, event: QDropEvent) -> None:
+        if self._exporting:
+            event.ignore()
+            return
         paths = local_files_from_mime(event.mimeData())
         if paths is None:
             event.ignore()

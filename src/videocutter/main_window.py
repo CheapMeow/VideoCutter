@@ -173,6 +173,7 @@ class MainWindow(QMainWindow):
         self.document = TimelineDocument()
         self.output_settings = OutputSettings()
         self._export_stop = False
+        self._exporting = False
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
         self.source_panel = SourcePanel(
@@ -260,6 +261,9 @@ class MainWindow(QMainWindow):
         self.output_settings = dialog.result_settings()
 
     def _export_video(self) -> None:
+        if self._exporting:
+            self._export_stop = True
+            return
         if self.document.reference_media() is None or not self.document.all_segments():
             self.show_status("轨道上没有可以输出的视频")
             return
@@ -280,7 +284,8 @@ class MainWindow(QMainWindow):
 
     def _export_to_path(self, path: str) -> None:
         self._export_stop = False
-        self.source_panel.setEnabled(False)
+        self._exporting = True
+        self.source_panel.set_exporting(True)
         self.preview.setEnabled(False)
         self.timeline.setEnabled(False)
         self._export_started = time.perf_counter()
@@ -293,11 +298,15 @@ class MainWindow(QMainWindow):
                 self.output_settings,
             )
         finally:
-            self.source_panel.setEnabled(True)
+            self._exporting = False
+            self.source_panel.set_exporting(False)
             self.preview.setEnabled(True)
             self.timeline.setEnabled(True)
         if not finished:
-            QApplication.quit()
+            if not self.isVisible():
+                QApplication.quit()
+                return
+            self.show_status("已终止导出")
             return
         elapsed = time.perf_counter() - self._export_started
         self.show_status(format_export_result(path, elapsed))

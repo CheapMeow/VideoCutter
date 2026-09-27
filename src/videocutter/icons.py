@@ -24,6 +24,10 @@ def export_icon() -> QIcon:
     return QIcon(_paint(_draw_export))
 
 
+def stop_export_icon() -> QIcon:
+    return QIcon(_paint(_draw_stop_export))
+
+
 def _paint(draw) -> QPixmap:
     pixmap = QPixmap(64, 64)
     pixmap.setDevicePixelRatio(2)
@@ -93,6 +97,14 @@ def _draw_settings(painter: QPainter) -> None:
 def _draw_export(painter: QPainter) -> None:
     _draw_window(painter)
     _draw_curved_arrow(painter, QPointF(17.0, 12.4), QPointF(24.8, 9.2), QPointF(27.2, 3.2))
+
+
+def _draw_stop_export(painter: QPainter) -> None:
+    painter.save()
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(ICON_COLOR)
+    painter.drawRoundedRect(QRectF(8.2, 8.2, 15.6, 15.6), 2.2, 2.2)
+    painter.restore()
 
 
 def _draw_curved_arrow(painter: QPainter, start: QPointF, control: QPointF, tip: QPointF) -> None:

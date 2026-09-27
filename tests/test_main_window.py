@@ -364,6 +364,44 @@ def test_export_status_shows_progress_and_elapsed_time(qapp, tmp_path):
     window.close()
 
 
+def test_stop_button_cancels_the_export_and_keeps_the_window(qapp, tmp_path):
+    path = tmp_path / "clip.avi"
+    write_color_video(path, frame_count=8, fps=10, size=(160, 90))
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path)])
+    media_id = _media_id(window, path)
+    assert _drop_media(window, media_id, row_top(0) + TRACK_HEIGHT / 2)
+    output = tmp_path / "exported.avi"
+
+    def press_stop() -> None:
+        button = window.source_panel.export_button
+        assert button.toolTip() == "终止导出"
+        assert button.isEnabled()
+        assert window.source_panel.add_button.isEnabled() is False
+        assert window.source_panel.open_button.isEnabled() is False
+        assert window.source_panel.save_button.isEnabled() is False
+        assert window.source_panel.settings_button.isEnabled() is False
+        assert window.source_panel.file_list.isEnabled() is False
+        assert window.preview.isEnabled() is False
+        assert window.timeline.isEnabled() is False
+        button.click()
+
+    QTimer.singleShot(0, press_stop)
+    window._export_to_path(str(output))
+    assert not output.exists()
+    assert window.isVisible()
+    assert window.source_panel.export_button.toolTip() == "导出"
+    assert window.source_panel.export_button.isEnabled()
+    assert window.source_panel.add_button.isEnabled()
+    assert window.preview.isEnabled()
+    assert window.timeline.isEnabled()
+    assert window.statusBar().currentMessage() == "已终止导出"
+    window.close()
+
+
 def test_closing_the_window_stops_the_export(qapp, tmp_path):
     path = tmp_path / "clip.avi"
     write_color_video(path, frame_count=8, fps=10, size=(160, 90))

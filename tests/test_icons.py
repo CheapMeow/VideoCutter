@@ -1,6 +1,6 @@
 from PySide6.QtGui import QImage
 
-from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon
+from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon, stop_export_icon
 
 
 def _image(icon) -> QImage:
@@ -50,3 +50,7 @@ def test_toolbar_icons_share_one_stroke_style(qapp):
     assert _opaque(exported, 8, 20)
     assert _opaque(exported, 10, 18)
     assert _opaque(exported, 24, 6)
+    stopped = _image(stop_export_icon())
+    assert _signature(stopped) != _signature(exported)
+    assert stopped.pixelColor(16, 16).alpha() > 200
+    assert _opaque(stopped, 2, 2) is False
