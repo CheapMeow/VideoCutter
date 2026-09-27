@@ -16,13 +16,31 @@ from videocutter.source_panel import SourcePanel
 from videocutter.timeline_widget import TimelineHost, TimelineWidget
 
 
-def format_export_progress(written: int, total: int) -> str:
+def format_export_progress(
+    written: int,
+    total: int,
+    elapsed_sec: float,
+    estimated_sec: float | None,
+) -> str:
     if total <= 0:
         raise ValueError(f"export frame count must be positive, got {total}")
     if written < 0 or written > total:
         raise ValueError(f"export progress {written} outside 0..{total}")
+    if not math.isfinite(elapsed_sec) or elapsed_sec < 0:
+        raise ValueError(f"export elapsed time must be finite and non-negative, got {elapsed_sec}")
+    if written == 0:
+        if estimated_sec is not None:
+            raise ValueError("export estimate requires a completed frame")
+        estimate_text = "—"
+    else:
+        if estimated_sec is None or not math.isfinite(estimated_sec) or estimated_sec < 0:
+            raise ValueError(f"export estimate must be finite and non-negative, got {estimated_sec}")
+        estimate_text = f"{estimated_sec:.2f} 秒"
     percent = written * 100 // total
-    return f"正在输出视频：{written}/{total}（{percent}%）"
+    return (
+        f"正在输出视频：{written}/{total}（{percent}%），"
+        f"已工作 {elapsed_sec:.2f} 秒，预计工作 {estimate_text}"
+    )
 
 
 def format_export_result(path: str, elapsed_sec: float) -> str:
@@ -133,7 +151,7 @@ class MainWindow(QMainWindow):
         self.source_panel.setEnabled(False)
         self.preview.setEnabled(False)
         self.timeline.setEnabled(False)
-        started = time.perf_counter()
+        self._export_started = time.perf_counter()
         try:
             finished = export_timeline(
                 self.document,
@@ -148,7 +166,7 @@ class MainWindow(QMainWindow):
         if not finished:
             QApplication.quit()
             return
-        elapsed = time.perf_counter() - started
+        elapsed = time.perf_counter() - self._export_started
         self.show_status(format_export_result(path, elapsed))
 
     def _export_should_stop(self) -> bool:
@@ -157,7 +175,10 @@ class MainWindow(QMainWindow):
     def _report_export_progress(self, written: int, total: int) -> None:
         self.export_written = written
         self.export_total = total
-        self.show_status(format_export_progress(written, total))
+        elapsed = time.perf_counter() - self._export_started
+        estimated = None if written == 0 else elapsed * total / written
+        self.export_progress_message = format_export_progress(written, total, elapsed, estimated)
+        self.show_status(self.export_progress_message)
         QApplication.processEvents()
 
     def showEvent(self, event) -> None:
