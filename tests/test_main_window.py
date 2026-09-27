@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt, QUrl
+from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent, QKeyEvent
 from PySide6.QtWidgets import QApplication
 
@@ -149,6 +149,27 @@ def test_export_status_shows_progress_and_elapsed_time(qapp, tmp_path):
     assert format_export_progress(4, 4) == "正在输出视频：4/4（100%）"
     assert format_export_result(str(output), 1.2) == f"已输出视频：{output}，用时 1.20 秒"
     window.close()
+
+
+def test_closing_the_window_stops_the_export(qapp, tmp_path):
+    path = tmp_path / "clip.avi"
+    write_color_video(path, frame_count=8, fps=10, size=(160, 90))
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path)])
+    media_id = _media_id(window, path)
+    assert _drop_media(window, media_id, row_top(0) + TRACK_HEIGHT / 2)
+    output = tmp_path / "exported.avi"
+    QTimer.singleShot(0, window.close)
+    window._export_to_path(str(output))
+    assert window.export_written == 0
+    assert window.export_total == 8
+    assert not output.exists()
+    assert not window.isVisible()
+    assert "用时" not in window.statusBar().currentMessage()
+    assert window.source_panel.isEnabled()
 
 
 def _media_id(window: MainWindow, path: Path) -> str:

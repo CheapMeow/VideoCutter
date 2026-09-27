@@ -37,7 +37,7 @@ def test_export_uses_the_first_size_and_the_top_track(tmp_path):
     def record(written: int, total: int) -> None:
         progress.append((written, total))
 
-    export_timeline(document, str(output), record)
+    export_timeline(document, str(output), record, lambda: False)
     probed = probe_video(str(output))
     assert probed["width"] == 160
     assert probed["height"] == 90
@@ -52,3 +52,22 @@ def test_export_uses_the_first_size_and_the_top_track(tmp_path):
     np.testing.assert_allclose(gap[40, 80], (0, 0, 0), atol=12)
     np.testing.assert_allclose(covered[40, 80], (20, 40, 0), atol=12)
     np.testing.assert_allclose(later[40, 80], (20, 40, 120), atol=12)
+
+
+def test_stop_during_export_removes_the_partial_file(tmp_path):
+    document = TimelineDocument()
+    clip = add_video(document, tmp_path / "clip.avi", 0, (160, 90), frame_count=8)
+    document.place_new_segment(clip.media_id, 0, 0, True, 0)
+    output = tmp_path / "out.avi"
+    progress: list[tuple[int, int]] = []
+
+    def record(written: int, total: int) -> None:
+        progress.append((written, total))
+
+    def should_stop() -> bool:
+        return bool(progress) and progress[-1][0] >= 1
+
+    finished = export_timeline(document, str(output), record, should_stop)
+    assert finished is False
+    assert progress == [(0, 8), (1, 8)]
+    assert not output.exists()

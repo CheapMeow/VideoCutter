@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -7,7 +8,7 @@ from videocutter.media import open_capture, read_frame
 from videocutter.model import TIME_EPSILON, MediaItem, TimelineDocument
 
 
-def export_timeline(document: TimelineDocument, path: str, on_progress) -> None:
+def export_timeline(document: TimelineDocument, path: str, on_progress, should_stop) -> bool:
     reference = document.reference_media()
     segments = document.all_segments()
     if reference is None or not segments:
@@ -25,15 +26,25 @@ def export_timeline(document: TimelineDocument, path: str, on_progress) -> None:
     if not writer.isOpened():
         raise RuntimeError(f"failed to create video: {path}")
     captures: dict[str, cv2.VideoCapture] = {}
+    cancelled = False
     try:
         on_progress(0, frame_count)
+        if should_stop():
+            cancelled = True
+            return False
         for index in range(frame_count):
             writer.write(_frame_at(document, reference, captures, index / reference.fps))
             on_progress(index + 1, frame_count)
+            if should_stop():
+                cancelled = True
+                return False
+        return True
     finally:
         writer.release()
         for capture in captures.values():
             capture.release()
+        if cancelled:
+            Path(path).unlink()
 
 
 def _frame_at(

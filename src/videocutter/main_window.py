@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.document = TimelineDocument()
+        self._export_stop = False
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
         self.source_panel = SourcePanel(self.document, self.refresh_views)
@@ -125,18 +126,30 @@ class MainWindow(QMainWindow):
         self._export_to_path(path)
 
     def _export_to_path(self, path: str) -> None:
+        self._export_stop = False
         self.source_panel.setEnabled(False)
         self.preview.setEnabled(False)
         self.timeline.setEnabled(False)
         started = time.perf_counter()
         try:
-            export_timeline(self.document, path, self._report_export_progress)
+            finished = export_timeline(
+                self.document,
+                path,
+                self._report_export_progress,
+                self._export_should_stop,
+            )
         finally:
             self.source_panel.setEnabled(True)
             self.preview.setEnabled(True)
             self.timeline.setEnabled(True)
+        if not finished:
+            QApplication.quit()
+            return
         elapsed = time.perf_counter() - started
         self.show_status(format_export_result(path, elapsed))
+
+    def _export_should_stop(self) -> bool:
+        return self._export_stop
 
     def _report_export_progress(self, written: int, total: int) -> None:
         self.export_written = written
@@ -149,5 +162,6 @@ class MainWindow(QMainWindow):
         self.refresh_views()
 
     def closeEvent(self, event) -> None:
+        self._export_stop = True
         self.preview.release()
         super().closeEvent(event)
