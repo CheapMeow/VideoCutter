@@ -77,6 +77,39 @@ def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
     window.close()
 
 
+def test_shift_click_selects_the_inclusive_media_range(qapp, tmp_path):
+    paths = []
+    for index in range(4):
+        path = tmp_path / f"clip{index}.avi"
+        write_color_video(path, frame_count=4, fps=10, size=(160, 90), red_base=index * 20)
+        paths.append(path)
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path) for path in paths])
+    file_list = window.source_panel.file_list
+    viewport = file_list.viewport()
+
+    def click_row(row: int, modifiers) -> None:
+        point = file_list.visualItemRect(file_list.item(row)).center()
+        QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, modifiers, point)
+
+    click_row(0, Qt.KeyboardModifier.NoModifier)
+    click_row(2, Qt.KeyboardModifier.ShiftModifier)
+    selected = [
+        row for row in range(file_list.count()) if file_list.item(row).isSelected()
+    ]
+    assert selected == [0, 1, 2]
+    click_row(3, Qt.KeyboardModifier.NoModifier)
+    click_row(1, Qt.KeyboardModifier.ShiftModifier)
+    selected = [
+        row for row in range(file_list.count()) if file_list.item(row).isSelected()
+    ]
+    assert selected == [1, 2, 3]
+    window.close()
+
+
 def test_rubber_band_selects_the_covered_media(qapp, tmp_path):
     paths = []
     for index in range(3):
