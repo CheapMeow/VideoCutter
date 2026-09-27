@@ -171,7 +171,12 @@ class TimelineWidget(QWidget):
         self._moved = False
         self._last_pos = pos
         self._last_track_index = None
-        if segment is None:
+        if pos.y() < RULER_HEIGHT:
+            self._mode = "playhead"
+            self._pressed_segment_id = None
+            self.document.select_segment(None)
+            self._scrub_playhead(pos.x())
+        elif segment is None:
             self._mode = "empty"
             self._pressed_segment_id = None
         else:
@@ -180,11 +185,17 @@ class TimelineWidget(QWidget):
             self._grab_offset = self.time_at_x(pos.x()) - segment.timeline_start
             self.document.begin_segment_drag(segment.segment_id)
         self.grabMouse()
+        if self._mode == "playhead":
+            self._emit()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._mode is None:
             return
         pos = event.position()
+        if self._mode == "playhead":
+            self._scrub_playhead(pos.x())
+            self._emit()
+            return
         if self._pointer_moved(pos):
             self._moved = True
         if not self._moved:
@@ -206,7 +217,9 @@ class TimelineWidget(QWidget):
             return
         self._scroll_timer.stop()
         pos = event.position()
-        if self._mode == "segment":
+        if self._mode == "playhead":
+            self._scrub_playhead(pos.x())
+        elif self._mode == "segment":
             if self._moved:
                 self._last_pos = pos
                 self._apply_segment_drag(pos)
@@ -390,6 +403,9 @@ class TimelineWidget(QWidget):
                 painter.drawLine(x, RULER_HEIGHT - 10, x, RULER_HEIGHT - 1)
                 painter.drawText(x + 4, 16, format_tick(seconds))
             seconds += step
+
+    def _scrub_playhead(self, x: float) -> None:
+        self.document.set_playhead(self.time_at_x(x))
 
     def _pointer_moved(self, pos: QPointF) -> bool:
         return abs(pos.x() - self._press_pos.x()) + abs(pos.y() - self._press_pos.y()) >= 4

@@ -76,11 +76,26 @@ def test_click_empty_seeks_and_click_on_segment_does_not_leave_a_drag(qapp):
 
 def test_drag_empty_pans_the_timeline(qapp):
     widget = show_timeline(qapp)
-    send_mouse(widget, "press", 300, 10)
-    send_mouse(widget, "move", 100, 10)
-    send_mouse(widget, "release", 100, 10)
+    send_mouse(widget, "press", 300, lane_y())
+    send_mouse(widget, "move", 100, lane_y())
+    send_mouse(widget, "release", 100, lane_y())
     assert widget.view_origin == pytest.approx(2.0)
     assert widget.document.playhead == 0
+
+
+def test_ruler_drag_scrubs_the_playhead_outside_the_widget(qapp):
+    widget = show_timeline(qapp)
+    widget.view_origin = 1.0
+    send_mouse(widget, "press", 200, 8)
+    assert widget.document.playhead == pytest.approx(widget.time_at_x(200))
+    send_mouse(widget, "move", 450, 500)
+    assert widget.document.playhead == pytest.approx(widget.time_at_x(450))
+    assert widget.view_origin == pytest.approx(1.0)
+    send_mouse(widget, "move", -40, -120)
+    assert widget.document.playhead == pytest.approx(widget.time_at_x(-40))
+    send_mouse(widget, "release", widget.width() + 80, 240)
+    assert widget.document.playhead == pytest.approx(widget.time_at_x(widget.width() + 80))
+    assert widget.view_origin == pytest.approx(1.0)
 
 
 def test_zoom_out_reaches_several_times_the_latest_frame(qapp):
