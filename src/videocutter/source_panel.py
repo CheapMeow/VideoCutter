@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QMimeData, QRect, Qt
-from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QMouseEvent, QPainter
+from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -92,6 +92,25 @@ class MediaList(QListWidget):
                 self._rubber_band.setGeometry(QRect(self._rubber_origin, self._rubber_origin))
                 return
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if self._delete_key(event):
+            self._panel.remove_selected_media()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _delete_key(self, event: QKeyEvent) -> bool:
+        if event.key() not in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            return False
+        if event.isAutoRepeat() or not self.hasFocus():
+            return False
+        blocked = (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier
+        )
+        return not (event.modifiers() & blocked)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._rubber_origin is not None:
@@ -255,6 +274,19 @@ class SourcePanel(QWidget):
         self.document.delete_media(media_id)
         self.reload_media_list()
         self._on_changed()
+
+    def remove_selected_media(self) -> None:
+        media_ids = []
+        for item in self.file_list.selectedItems():
+            media_id = item.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(media_id, str) or not media_id:
+                raise RuntimeError("media item is missing an id")
+            media_ids.append(media_id)
+        for media_id in media_ids:
+            self.document.delete_media(media_id)
+        if media_ids:
+            self.reload_media_list()
+            self._on_changed()
 
     def reload_media_list(self) -> None:
         self.file_list.clear()

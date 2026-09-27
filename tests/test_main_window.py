@@ -77,6 +77,67 @@ def test_output_settings_dialog_keeps_the_chosen_rates(qapp):
     window.close()
 
 
+def test_delete_and_backspace_remove_the_selected_media(qapp, tmp_path):
+    paths = []
+    for index in range(3):
+        path = tmp_path / f"clip{index}.avi"
+        write_color_video(path, frame_count=4, fps=10, size=(160, 90), red_base=index * 20)
+        paths.append(path)
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path) for path in paths])
+    file_list = window.source_panel.file_list
+    viewport = file_list.viewport()
+    kept_id = file_list.item(2).data(Qt.ItemDataRole.UserRole)
+    removed_id = file_list.item(0).data(Qt.ItemDataRole.UserRole)
+    assert _drop_media(window, removed_id, row_top(0) + TRACK_HEIGHT / 2)
+    QTest.mouseClick(
+        viewport,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        file_list.visualItemRect(file_list.item(0)).center(),
+    )
+    QTest.mouseClick(
+        viewport,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.ShiftModifier,
+        file_list.visualItemRect(file_list.item(1)).center(),
+    )
+    file_list.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(file_list, Qt.Key.Key_Delete)
+    assert list(window.document.media) == [kept_id]
+    assert window.document.all_segments() == []
+    assert file_list.count() == 1
+
+    extra = tmp_path / "extra.avi"
+    write_color_video(extra, frame_count=4, fps=10, size=(160, 90), red_base=90)
+    window.source_panel.add_paths([str(extra)])
+    extra_id = _media_id(window, extra)
+    QTest.mouseClick(
+        viewport,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        file_list.visualItemRect(file_list.item(1)).center(),
+    )
+    file_list.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(file_list, Qt.Key.Key_Backspace)
+    assert list(window.document.media) == [kept_id]
+    assert extra_id not in window.document.media
+
+    assert _drop_media(window, kept_id, row_top(0) + TRACK_HEIGHT / 2)
+    window.document.select_segment(window.document.all_segments()[0].segment_id)
+    window.timeline.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(window.timeline, Qt.Key.Key_Delete)
+    assert window.document.all_segments() == []
+    assert list(window.document.media) == [kept_id]
+    window.close()
+
+
 def test_shift_click_selects_the_inclusive_media_range(qapp, tmp_path):
     paths = []
     for index in range(4):
