@@ -1,11 +1,15 @@
 import math
 import time
-from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QSplitter
 
-from videocutter.export import export_timeline
+from videocutter.export import (
+    default_export_filter,
+    export_filter_string,
+    export_timeline,
+    output_path_for_filter,
+)
 from videocutter.model import TimelineDocument
 from videocutter.preview_widget import PreviewWidget
 from videocutter.source_panel import SourcePanel
@@ -113,17 +117,16 @@ class MainWindow(QMainWindow):
         if self.document.reference_media() is None or not self.document.all_segments():
             self.show_status("轨道上没有可以输出的视频")
             return
-        path, _selected_filter = QFileDialog.getSaveFileName(
+        path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "输出视频",
             "",
-            "AVI 视频 (*.avi)",
+            export_filter_string(),
+            default_export_filter(),
         )
         if not path:
             return
-        if Path(path).suffix.lower() != ".avi":
-            path = str(Path(path).with_suffix(".avi"))
-        self._export_to_path(path)
+        self._export_to_path(output_path_for_filter(path, selected_filter))
 
     def _export_to_path(self, path: str) -> None:
         self._export_stop = False

@@ -4,7 +4,14 @@ import numpy as np
 import pytest
 
 from tests.support import write_color_video
-from videocutter.export import export_timeline
+import cv2
+
+from videocutter.export import (
+    default_export_filter,
+    export_timeline,
+    fourcc_for_suffix,
+    output_path_for_filter,
+)
 from videocutter.media import open_capture, probe_video, read_frame
 from videocutter.model import MediaItem, TimelineDocument, new_id
 
@@ -52,6 +59,34 @@ def test_export_uses_the_first_size_and_the_top_track(tmp_path):
     np.testing.assert_allclose(gap[40, 80], (0, 0, 0), atol=12)
     np.testing.assert_allclose(covered[40, 80], (20, 40, 0), atol=12)
     np.testing.assert_allclose(later[40, 80], (20, 40, 120), atol=12)
+
+
+def test_default_export_is_h264_and_other_suffixes_use_their_codecs(tmp_path):
+    assert default_export_filter() == "MP4 视频 (*.mp4)"
+    assert fourcc_for_suffix(".mp4") == "avc1"
+    assert fourcc_for_suffix(".mov") == "avc1"
+    assert output_path_for_filter(r"D:\clips\out", default_export_filter()) == r"D:\clips\out.mp4"
+    assert output_path_for_filter(r"D:\clips\out.avi", "AVI 视频 (*.avi)") == r"D:\clips\out.avi"
+    document = TimelineDocument()
+    clip = add_video(document, tmp_path / "clip.avi", 0, (160, 90), frame_count=4)
+    document.place_new_segment(clip.media_id, 0, 0, True, 0)
+    expected = {
+        "out.mp4": "h264",
+        "out.mov": "h264",
+        "out.webm": "VP90",
+    }
+    for name, codec in expected.items():
+        output = tmp_path / name
+        finished = export_timeline(document, str(output), lambda _written, _total: None, lambda: False)
+        assert finished is True
+        capture = cv2.VideoCapture(str(output))
+        raw = int(capture.get(cv2.CAP_PROP_FOURCC))
+        read_codec = "".join(chr((raw >> (8 * index)) & 0xFF) for index in range(4))
+        ok, frame = capture.read()
+        capture.release()
+        assert read_codec == codec
+        assert ok
+        np.testing.assert_allclose(frame[40, 80], (20, 40, 0), atol=16)
 
 
 def test_stop_during_export_removes_the_partial_file(tmp_path):
