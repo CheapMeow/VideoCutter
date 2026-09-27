@@ -60,7 +60,7 @@ def send_mouse(widget: TimelineWidget, kind: str, x: float, y: float) -> None:
     QApplication.sendEvent(widget, event)
 
 
-def test_click_empty_seeks_and_click_on_segment_does_not_leave_a_drag(qapp):
+def test_only_the_ruler_moves_the_playhead(qapp):
     document = TimelineDocument()
     document.add_media(media("a", 2))
     segment = document.place_new_segment("a", 0, 0, True, 0)
@@ -68,9 +68,14 @@ def test_click_empty_seeks_and_click_on_segment_does_not_leave_a_drag(qapp):
     send_mouse(widget, "press", 250, 10)
     send_mouse(widget, "release", 250, 10)
     assert document.playhead == pytest.approx(2.5)
+    send_mouse(widget, "press", 400, lane_y())
+    send_mouse(widget, "release", 400, lane_y())
+    assert document.playhead == pytest.approx(2.5)
+    assert document.selected_segment_id is None
     send_mouse(widget, "press", 50, lane_y())
     send_mouse(widget, "release", 50, lane_y())
-    assert document.playhead == pytest.approx(0.5)
+    assert document.playhead == pytest.approx(2.5)
+    assert document.selected_segment_id == segment.segment_id
     assert document.drag_base_track_count() is None
     _index, found = document.find_segment(segment.segment_id)
     assert found.timeline_start == pytest.approx(0)
@@ -237,6 +242,9 @@ def test_split_with_s_only_the_selected_segment(qapp):
     selected = document.place_new_segment("a", 0, 0, True, 0)
     other = document.place_new_segment("b", 0, 1, True, 0)
     widget = show_timeline(qapp, document)
+    send_mouse(widget, "press", 150, 10)
+    send_mouse(widget, "release", 150, 10)
+    assert document.playhead == pytest.approx(1.5)
     send_mouse(widget, "press", 150, lane_y(0))
     send_mouse(widget, "release", 150, lane_y(0))
     assert document.selected_segment_id == selected.segment_id

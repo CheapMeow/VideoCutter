@@ -243,10 +243,8 @@ class TimelineWidget(QWidget):
                 self.document.end_segment_drag()
             else:
                 self.document.cancel_segment_drag()
-                self.document.set_playhead(max(0.0, self.time_at_x(pos.x())))
             self.document.select_segment(self._pressed_segment_id)
         elif self._mode == "empty" and not self._moved:
-            self.document.set_playhead(max(0.0, self.time_at_x(pos.x())))
             self.document.select_segment(None)
         self._mode = None
         self._moved = False
