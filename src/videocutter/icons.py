@@ -156,20 +156,15 @@ def _inward_layout(geometry: dict) -> dict:
     base_angle = round((geometry["shaft_start"] - head_deg) * 16) / 16
     shaft_end = geometry["shaft_start"] + geometry["shaft_span"]
     base = _circle_point(geometry["center_x"], geometry["center_y"], geometry["radius"], base_angle)
-    tip = geometry["inward_junction"]
-    axis_x = tip.x() - base.x()
-    axis_y = tip.y() - base.y()
-    axis_length = math.hypot(axis_x, axis_y)
-    if axis_length <= 0:
-        raise RuntimeError("inward arrow head has no length")
+    axis_x, axis_y = _sweep_tangent(base_angle, _ARROW_SWEEP)
     return {
         "base_angle": base_angle,
         "arc_span": shaft_end - base_angle,
         "base": base,
-        "tip": tip,
-        "axis_x": axis_x / axis_length,
-        "axis_y": axis_y / axis_length,
-        "axis_length": axis_length,
+        "tip": QPointF(base.x() + axis_x * _HEAD_LENGTH, base.y() + axis_y * _HEAD_LENGTH),
+        "axis_x": axis_x,
+        "axis_y": axis_y,
+        "axis_length": _HEAD_LENGTH,
         "tail": QPointF(
             geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH,
             geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH,
