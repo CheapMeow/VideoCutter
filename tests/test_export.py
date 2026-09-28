@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import av
 import numpy as np
 import pytest
 
@@ -14,7 +15,7 @@ from videocutter.export import (
 )
 from videocutter.output_settings import RATE_MAX, RATE_MIN, RATE_SPECIFIED, OutputSettings
 from videocutter.media import open_capture, probe_video, read_frame
-from videocutter.model import MediaItem, TimelineDocument, new_id
+from videocutter.model import MediaItem, Segment, TimelineDocument, new_id
 
 
 def add_video(
@@ -104,6 +105,73 @@ def test_default_export_is_h264_and_other_suffixes_use_their_codecs(tmp_path):
         np.testing.assert_allclose(frame[40, 80], (20, 40, 0), atol=16)
 
 
+def write_gray_h264(path: Path, frame_count: int, fps: int, step: int) -> None:
+    container = av.open(str(path), mode="w")
+    stream = container.add_stream("libx264", rate=fps)
+    stream.width = 160
+    stream.height = 90
+    stream.pix_fmt = "yuv420p"
+    stream.options = {"g": "4", "crf": "0"}
+    for index in range(frame_count):
+        image = np.full((90, 160, 3), index * step, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(image, format="bgr24")
+        frame.pts = index
+        for packet in stream.encode(frame):
+            container.mux(packet)
+    for packet in stream.encode():
+        container.mux(packet)
+    container.close()
+
+
+def test_sequential_decode_picks_the_same_frames_as_seeking(tmp_path):
+    source = tmp_path / "gray.mp4"
+    write_gray_h264(source, frame_count=20, fps=10, step=12)
+    probed = probe_video(str(source))
+    item = MediaItem(
+        media_id=new_id(),
+        path=str(source),
+        duration_sec=float(probed["duration_sec"]),
+        fps=float(probed["fps"]),
+        frame_count=int(probed["frame_count"]),
+        width=int(probed["width"]),
+        height=int(probed["height"]),
+        bitrate_kbps=float(probed["bitrate_kbps"]),
+    )
+    document = TimelineDocument()
+    document.add_media(item)
+    document.tracks = [
+        [
+            Segment(new_id(), item.media_id, 0.0, 1.2, 1.8),
+            Segment(new_id(), item.media_id, 0.6, 0.2, 0.8),
+        ]
+    ]
+    document.reference_media_id = item.media_id
+    output = tmp_path / "out.mp4"
+    settings = OutputSettings(
+        fps_mode=RATE_SPECIFIED,
+        fps_value=20,
+        bitrate_mode=RATE_SPECIFIED,
+        bitrate_kbps=8000,
+    )
+    assert export_timeline(document, str(output), lambda _written, _total: None, lambda: False, settings)
+    capture = open_capture(str(source))
+    expected = []
+    for index in range(24):
+        time_sec = index / 20
+        segment = document.top_segment_at(time_sec)
+        source_time = segment.source_in + (time_sec - segment.timeline_start)
+        expected.append(float(read_frame(capture, item.fps, item.frame_count, source_time)[45, 80].mean()))
+    capture.release()
+    container = av.open(str(output))
+    actual = [float(frame.to_ndarray(format="bgr24")[45, 80].mean()) for frame in container.decode(video=0)]
+    container.close()
+    assert len(actual) == 24
+    np.testing.assert_allclose(actual, expected, atol=5)
+    assert expected[0] == pytest.approx(144, abs=5)
+    assert expected[1] == pytest.approx(144, abs=5)
+    assert expected[14] == pytest.approx(36, abs=5)
+
+
 def test_stop_during_export_removes_the_partial_file(tmp_path):
     document = TimelineDocument()
     clip = add_video(document, tmp_path / "clip.avi", 0, (160, 90), frame_count=8)
@@ -163,12 +231,13 @@ def test_export_fps_follows_the_selected_segment_rate(tmp_path):
 
 def test_specified_bitrate_changes_the_file_size(tmp_path):
     path = tmp_path / "noise.avi"
-    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 10, (160, 90))
+    # 画面太小时，高码率会超过编码器在这个尺寸上能用到的上限
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 10, (640, 360))
     if not writer.isOpened():
         raise RuntimeError(f"failed to create video: {path}")
     generator = np.random.default_rng(1)
-    for _index in range(20):
-        writer.write(generator.integers(0, 256, (90, 160, 3), dtype=np.uint8))
+    for _index in range(60):
+        writer.write(generator.integers(0, 256, (360, 640, 3), dtype=np.uint8))
     writer.release()
     document = TimelineDocument()
     probed = probe_video(str(path))

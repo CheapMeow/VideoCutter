@@ -69,12 +69,7 @@ def open_capture(path: str) -> cv2.VideoCapture:
     return capture
 
 
-def read_frame(
-    capture: cv2.VideoCapture,
-    fps: float,
-    frame_count: int,
-    source_time_sec: float,
-) -> np.ndarray:
+def frame_index_at(fps: float, frame_count: int, source_time_sec: float) -> int:
     if fps <= 0:
         raise RuntimeError(f"invalid fps: {fps}")
     if frame_count <= 0:
@@ -88,6 +83,16 @@ def read_frame(
         raise RuntimeError(
             f"frame index {frame_index} outside 0..{frame_count - 1} at {source_time_sec}"
         )
+    return frame_index
+
+
+def read_frame(
+    capture: cv2.VideoCapture,
+    fps: float,
+    frame_count: int,
+    source_time_sec: float,
+) -> np.ndarray:
+    frame_index = frame_index_at(fps, frame_count, source_time_sec)
     capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
     ok, frame = capture.read()
     if not ok:
