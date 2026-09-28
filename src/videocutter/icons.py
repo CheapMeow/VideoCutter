@@ -71,7 +71,7 @@ def _outside_tip(rect: QRectF) -> QPointF:
 
 def _draw_open_project(painter: QPainter) -> None:
     _draw_disk(painter)
-    _draw_arc_arrow(painter, inward=True)
+    _draw_inward_arrow(painter)
 
 
 def _draw_save_project(painter: QPainter) -> None:
@@ -119,15 +119,17 @@ def _draw_stop_export(painter: QPainter) -> None:
 
 
 def _draw_arc_arrow(painter: QPainter, inward: bool) -> None:
-    geometry = _shared_arrow_geometry()
     if inward:
-        junction = geometry["inward_junction"]
-        tangent_x = geometry["inward_tangent_x"]
-        tangent_y = geometry["inward_tangent_y"]
-    else:
-        junction = geometry["outward_junction"]
-        tangent_x = geometry["outward_tangent_x"]
-        tangent_y = geometry["outward_tangent_y"]
+        _draw_inward_arrow(painter)
+        return
+    _draw_outward_arrow(painter)
+
+
+def _draw_outward_arrow(painter: QPainter) -> None:
+    geometry = _shared_arrow_geometry()
+    junction = geometry["outward_junction"]
+    tangent_x = geometry["outward_tangent_x"]
+    tangent_y = geometry["outward_tangent_y"]
     painter.save()
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
     _stroke_shaft(painter, geometry, _ARROW_WIDTH + _ARROW_GAP * 2)
@@ -135,6 +137,44 @@ def _draw_arc_arrow(painter: QPainter, inward: bool) -> None:
     painter.restore()
     _stroke_shaft(painter, geometry, _ARROW_WIDTH)
     _stroke_head(painter, junction, tangent_x, tangent_y, 0.0)
+
+
+def _draw_inward_arrow(painter: QPainter) -> None:
+    geometry = _shared_arrow_geometry()
+    layout = _inward_layout(geometry)
+    painter.save()
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
+    _stroke_inward_line(painter, geometry, layout, _ARROW_WIDTH + _ARROW_GAP * 2)
+    _stroke_inward_head(painter, layout, _ARROW_GAP)
+    painter.restore()
+    _stroke_inward_line(painter, geometry, layout, _ARROW_WIDTH)
+    _stroke_inward_head(painter, layout, 0.0)
+
+
+def _inward_layout(geometry: dict) -> dict:
+    head_deg = math.degrees(_HEAD_LENGTH / geometry["radius"])
+    base_angle = round((geometry["shaft_start"] - head_deg) * 16) / 16
+    shaft_end = geometry["shaft_start"] + geometry["shaft_span"]
+    base = _circle_point(geometry["center_x"], geometry["center_y"], geometry["radius"], base_angle)
+    tip = geometry["inward_junction"]
+    axis_x = tip.x() - base.x()
+    axis_y = tip.y() - base.y()
+    axis_length = math.hypot(axis_x, axis_y)
+    if axis_length <= 0:
+        raise RuntimeError("inward arrow head has no length")
+    return {
+        "base_angle": base_angle,
+        "arc_span": shaft_end - base_angle,
+        "base": base,
+        "tip": tip,
+        "axis_x": axis_x / axis_length,
+        "axis_y": axis_y / axis_length,
+        "axis_length": axis_length,
+        "tail": QPointF(
+            geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH,
+            geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH,
+        ),
+    }
 
 
 def _shared_arrow_geometry() -> dict:
@@ -215,6 +255,36 @@ def _stroke_shaft(painter: QPainter, geometry: dict, width: float) -> None:
         rect,
         int(round(geometry["shaft_start"] * 16)),
         int(round(geometry["shaft_span"] * 16)),
+    )
+
+
+def _stroke_inward_line(painter: QPainter, geometry: dict, layout: dict, width: float) -> None:
+    arc = dict(geometry)
+    arc["shaft_start"] = layout["base_angle"]
+    arc["shaft_span"] = layout["arc_span"]
+    _stroke_shaft(painter, arc, width)
+    junction = geometry["outward_junction"]
+    tangent_x = geometry["outward_tangent_x"]
+    tangent_y = geometry["outward_tangent_y"]
+    _apply_pen(painter, width, ICON_COLOR)
+    pen = painter.pen()
+    pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+    painter.setPen(pen)
+    painter.drawLine(
+        QPointF(junction.x() - tangent_x * _HEAD_OVERLAP, junction.y() - tangent_y * _HEAD_OVERLAP),
+        layout["tail"],
+    )
+
+
+def _stroke_inward_head(painter: QPainter, layout: dict, head_extra: float) -> None:
+    _draw_arrow_head(
+        painter,
+        layout["base"],
+        layout["axis_x"],
+        layout["axis_y"],
+        layout["axis_length"] + head_extra,
+        _HEAD_HALF + head_extra,
+        _HEAD_OVERLAP + head_extra,
     )
 
 

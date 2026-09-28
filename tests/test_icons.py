@@ -3,11 +3,11 @@ import math
 from PySide6.QtGui import QImage
 
 from videocutter.icons import (
-    _ARROW_WIDTH,
+    _HEAD_LENGTH,
     _draw_arc_arrow,
+    _inward_layout,
     _paint,
     _shared_arrow_geometry,
-    _stroke_shaft,
     export_icon,
     open_project_icon,
     save_project_icon,
@@ -73,6 +73,13 @@ def _ink(image: QImage, x: int, y: int) -> int:
     return count
 
 
+def _near_ink(pixels: set[tuple[int, int]], x: float, y: float) -> bool:
+    for px, py in pixels:
+        if math.hypot(px - x, py - y) <= 1.6:
+            return True
+    return False
+
+
 def _ink_pixels(draw) -> set[tuple[int, int]]:
     image = _paint(draw).toImage()
     step = int(image.devicePixelRatio())
@@ -84,15 +91,21 @@ def _ink_pixels(draw) -> set[tuple[int, int]]:
     return pixels
 
 
-def test_open_and_save_arrows_follow_the_same_arc(qapp):
-    shaft = _ink_pixels(lambda painter: _stroke_shaft(painter, _shared_arrow_geometry(), _ARROW_WIDTH))
-    outward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=False))
+def test_inward_arrow_reverses_the_outward_arrow_ends(qapp):
+    geometry = _shared_arrow_geometry()
+    layout = _inward_layout(geometry)
+    center = geometry["inward_junction"]
+    assert math.hypot(layout["tip"].x() - center.x(), layout["tip"].y() - center.y()) < 1e-4
+    outward_tip_x = geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH
+    outward_tip_y = geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH
+    assert math.hypot(layout["tail"].x() - outward_tip_x, layout["tail"].y() - outward_tip_y) < 1e-4
     inward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=True))
-    assert len(shaft) > 20
-    assert shaft <= outward
-    assert shaft <= inward
-    assert outward - shaft
-    assert inward - shaft
+    outward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=False))
+    assert _near_ink(inward, layout["tip"].x(), layout["tip"].y())
+    assert _near_ink(inward, layout["tail"].x(), layout["tail"].y())
+    assert _near_ink(outward, outward_tip_x, outward_tip_y)
+    assert inward - outward
+    assert outward - inward
 
 
 def test_arrowhead_base_is_perpendicular_to_the_arc(qapp):
