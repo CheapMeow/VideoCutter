@@ -192,7 +192,6 @@ class SourcePanel(QWidget):
         self._on_changed = on_changed
         self._exporting = False
         self.setAcceptDrops(True)
-        self.setMinimumWidth(460)
         self.add_button = QPushButton("+")
         self.add_button.setFixedSize(32, 32)
         self.add_button.setToolTip("添加视频")

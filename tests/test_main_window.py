@@ -33,6 +33,10 @@ def test_window_has_source_preview_and_timeline(qapp):
     assert right.widget(0) is window.preview
     assert right.widget(1) is window.timeline_host
     assert window.source_panel.add_button.text() == "+"
+    panel = window.source_panel
+    header = panel.layout().itemAt(0).layout()
+    margins = panel.layout().contentsMargins()
+    assert panel.minimumSizeHint().width() == header.minimumSize().width() + margins.left() + margins.right()
     for button, tooltip in (
         (window.source_panel.open_button, "打开工程"),
         (window.source_panel.save_button, "保存工程"),
