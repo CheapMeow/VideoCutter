@@ -1,18 +1,36 @@
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPainterPathStroker, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPainterPathStroker, QPixmap, QTransform
 
 
 ICON_COLOR = QColor("#e6e6e6")
-_SYMBOL = QRectF(8.2, 9.2, 15.6, 13.6)
-_SYMBOL_STROKE = 2.3
+_CANVAS = 32.0
+_CANVAS_CENTER = QPointF(_CANVAS / 2, _CANVAS / 2)
+# 每个 icon 墨迹外框的长边
+_ICON_EXTENT = 24.0
+# 主体与箭头的设计坐标以主体中心为原点
+_BODY = QRectF(-8.0, -7.0, 16.0, 14.0)
+_BODY_STROKE = 2.3
+_DISK_CORNER = 2.2
+_DISK_PLATTER = 4.4
+_WINDOW_CORNER = 1.8
+_WINDOW_BAR = 3.8
+_WINDOW_BAR_INSET = 1.6
 _ARROW_WIDTH = 3.5
 _ARROW_GAP = 1.9
-_ARROW_SWEEP = 118.0
+# 半径、出发方向与转角同时决定打开工程与保存工程两个 icon 的外框长边是否相等
+_ARROW_RADIUS = 9.75
+# 尾部出发方向，数学角度（0 指向右，逆时针为正）
+_ARROW_HEADING = 93.0
+# 弧线向右转过的角度
+_ARROW_TURN = 73.0
 _HEAD_LENGTH = 6.8
 _HEAD_HALF = 4.6
-_HEAD_OVERLAP = 0.7
+_GEAR_TEETH = 8
+_GEAR_ROOT = 0.7
+_GEAR_HOLE = 0.3
+_STOP_CORNER = 2.2
 
 
 def open_project_icon() -> QIcon:
@@ -41,400 +59,233 @@ def _paint(draw) -> QPixmap:
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    pen = QPen(ICON_COLOR)
-    pen.setWidthF(1.8)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(pen)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(ICON_COLOR)
     draw(painter)
     painter.end()
     return pixmap
 
 
-def _draw_disk(painter: QPainter) -> None:
-    _apply_pen(painter, _SYMBOL_STROKE, ICON_COLOR)
-    painter.drawRoundedRect(_SYMBOL, 2.2, 2.2)
-    painter.drawEllipse(_SYMBOL.center(), 4.4, 4.4)
-
-
-def _draw_window(painter: QPainter) -> None:
-    _apply_pen(painter, _SYMBOL_STROKE, ICON_COLOR)
-    painter.drawRoundedRect(_SYMBOL, 1.8, 1.8)
-    bar_y = _SYMBOL.top() + 3.8
-    painter.drawLine(QPointF(_SYMBOL.left() + 1.6, bar_y), QPointF(_SYMBOL.right() - 1.6, bar_y))
-
-
-def _outside_tip(rect: QRectF) -> QPointF:
-    return QPointF(rect.right() + 1.5, rect.top() - 2.0)
-
-
 def _draw_open_project(painter: QPainter) -> None:
-    _draw_disk(painter)
-    _draw_inward_arrow(painter)
+    _draw_arrow_icon(painter, _disk_shape(), _arrow_layout()["inward"])
 
 
 def _draw_save_project(painter: QPainter) -> None:
-    _draw_disk(painter)
-    _draw_arc_arrow(painter, inward=False)
-
-
-def _draw_settings(painter: QPainter) -> None:
-    center = QPointF(16.0, 16.0)
-    teeth = 8
-    outer = 11.0
-    root = 7.6
-    span = 2 * math.pi / teeth
-    path = QPainterPath()
-    for index in range(teeth):
-        base = index * span - math.pi / 2
-        points = (
-            (root, base + span * 0.08),
-            (outer, base + span * 0.28),
-            (outer, base + span * 0.52),
-            (root, base + span * 0.72),
-        )
-        for radius, angle in points:
-            point = QPointF(center.x() + radius * math.cos(angle), center.y() + radius * math.sin(angle))
-            if index == 0 and radius == root and angle == points[0][1]:
-                path.moveTo(point)
-            else:
-                path.lineTo(point)
-    path.closeSubpath()
-    painter.drawPath(path)
-    painter.drawEllipse(center, 3.1, 3.1)
+    _draw_arrow_icon(painter, _disk_shape(), _arrow_layout()["outward"])
 
 
 def _draw_export(painter: QPainter) -> None:
-    _draw_window(painter)
-    _draw_arc_arrow(painter, inward=False)
+    _draw_arrow_icon(painter, _window_shape(), _arrow_layout()["outward"])
+
+
+def _draw_settings(painter: QPainter) -> None:
+    painter.drawPath(_gear_shape())
 
 
 def _draw_stop_export(painter: QPainter) -> None:
-    painter.save()
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(ICON_COLOR)
-    painter.drawRoundedRect(QRectF(8.2, 8.2, 15.6, 15.6), 2.2, 2.2)
-    painter.restore()
+    painter.drawPath(_stop_shape())
 
 
-def _draw_arc_arrow(painter: QPainter, inward: bool) -> None:
-    if inward:
-        _draw_inward_arrow(painter)
-        return
-    _draw_outward_arrow(painter)
-
-
-def _draw_outward_arrow(painter: QPainter) -> None:
-    geometry = _shared_arrow_geometry()
-    junction = geometry["outward_junction"]
-    tangent_x = geometry["outward_tangent_x"]
-    tangent_y = geometry["outward_tangent_y"]
+def _draw_arrow_icon(painter: QPainter, body: QPainterPath, arrow: dict) -> None:
+    painter.setWorldTransform(_arrow_frame_transform(body, arrow), True)
+    painter.drawPath(body)
     painter.save()
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-    _stroke_shaft(painter, geometry, _ARROW_WIDTH + _ARROW_GAP * 2)
-    _stroke_head(painter, junction, tangent_x, tangent_y, _ARROW_GAP)
+    painter.drawPath(arrow["mask"])
     painter.restore()
-    _stroke_shaft(painter, geometry, _ARROW_WIDTH)
-    _stroke_head(painter, junction, tangent_x, tangent_y, 0.0)
+    painter.drawPath(arrow["shape"])
 
 
-def _draw_inward_arrow(painter: QPainter) -> None:
-    geometry = _shared_arrow_geometry()
-    layout = _inward_layout(geometry)
-    painter.save()
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-    _stroke_inward_line(painter, layout, _ARROW_WIDTH + _ARROW_GAP * 2)
-    _stroke_inward_head(painter, layout, _ARROW_GAP)
-    painter.restore()
-    _stroke_inward_line(painter, layout, _ARROW_WIDTH)
-    _stroke_inward_head(painter, layout, 0.0)
+def _arrow_frame_transform(body: QPainterPath, arrow: dict) -> QTransform:
+    frame = body.boundingRect().united(arrow["shape"].boundingRect())
+    scale = _arrow_frame_scale()
+    transform = QTransform()
+    transform.translate(_CANVAS_CENTER.x(), _CANVAS_CENTER.y())
+    transform.scale(scale, scale)
+    transform.translate(-frame.center().x(), -frame.center().y())
+    return transform
 
 
-def _inward_layout(geometry: dict) -> dict:
-    radius = geometry["radius"]
-    sweep = geometry["shaft_span"]
-    disk = geometry["inward_junction"]
-    tail = QPointF(
-        geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH,
-        geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH,
-    )
-    circle = _match_inward_circle(disk.x(), disk.y(), tail.x(), tail.y(), radius, sweep)
-    base = QPointF(circle["base_x"], circle["base_y"])
-    return {
-        "center_x": circle["center_x"],
-        "center_y": circle["center_y"],
-        "radius": radius,
-        "arc_start": circle["start"],
-        "arc_span": sweep,
-        "base": base,
-        "tip": disk,
-        "axis_x": circle["axis_x"],
-        "axis_y": circle["axis_y"],
-        "axis_length": _HEAD_LENGTH,
-        "tail": tail,
-    }
+def _arrow_frame_scale() -> float:
+    # 三个带箭头的 icon 共用一个缩放，弧线在三者之间保持同一曲率
+    layout = _arrow_layout()
+    extent = 0.0
+    for body, arrow in (
+        (_disk_shape(), layout["inward"]),
+        (_disk_shape(), layout["outward"]),
+        (_window_shape(), layout["outward"]),
+    ):
+        frame = body.boundingRect().united(arrow["shape"].boundingRect())
+        extent = max(extent, frame.width(), frame.height())
+    return _ICON_EXTENT / extent
 
 
-def _match_inward_circle(
-    disk_x: float,
-    disk_y: float,
-    tail_x: float,
-    tail_y: float,
-    radius: float,
-    sweep: float,
-) -> dict:
-    best = None
-    for side in (-1, 1):
-        for step in range(720):
-            found = _inward_circle_at(disk_x, disk_y, radius, sweep, side, math.radians(step * 0.5))
-            if found is None:
-                continue
-            miss = math.hypot(found["end_x"] - tail_x, found["end_y"] - tail_y)
-            if best is None or miss < best[0]:
-                best = (miss, found)
-    if best is None:
-        raise RuntimeError("inward arrow arc has no tangent toward the disk center")
-    center_phi = math.atan2(best[1]["axis_y"], best[1]["axis_x"])
-    side = best[1]["side"]
-    for step in range(-250, 251):
-        found = _inward_circle_at(disk_x, disk_y, radius, sweep, side, center_phi + math.radians(step * 0.002))
-        if found is None:
-            continue
-        miss = math.hypot(found["end_x"] - tail_x, found["end_y"] - tail_y)
-        if miss < best[0]:
-            best = (miss, found)
-    if best[0] > 0.15:
-        raise RuntimeError("inward arrow arc does not reach the outward tip")
-    return best[1]
-
-
-def _inward_circle_at(
-    disk_x: float,
-    disk_y: float,
-    radius: float,
-    sweep: float,
-    side: int,
-    phi: float,
-) -> dict | None:
-    axis_x = math.cos(phi)
-    axis_y = math.sin(phi)
-    base_x = disk_x - axis_x * _HEAD_LENGTH
-    base_y = disk_y - axis_y * _HEAD_LENGTH
-    center_x = base_x + (-axis_y * side) * radius
-    center_y = base_y + (axis_x * side) * radius
-    start = math.degrees(math.atan2(center_y - base_y, base_x - center_x))
-    start_rad = math.radians(start)
-    if sweep < 0:
-        travel_x = math.sin(start_rad)
-        travel_y = math.cos(start_rad)
-    else:
-        travel_x = -math.sin(start_rad)
-        travel_y = -math.cos(start_rad)
-    if travel_x * axis_x + travel_y * axis_y > -0.95:
-        return None
-    end = _circle_point(center_x, center_y, radius, start + sweep)
-    return {
-        "side": side,
-        "axis_x": axis_x,
-        "axis_y": axis_y,
-        "base_x": base_x,
-        "base_y": base_y,
-        "center_x": center_x,
-        "center_y": center_y,
+def _arrow_layout() -> dict:
+    heading = math.radians(_ARROW_HEADING)
+    tail = QPointF(0.0, 0.0)
+    center = QPointF(math.sin(heading) * _ARROW_RADIUS, math.cos(heading) * _ARROW_RADIUS)
+    start = _ARROW_HEADING + 90.0
+    end = start - _ARROW_TURN
+    junction = _circle_point(center, _ARROW_RADIUS, end)
+    end_heading = math.radians(_ARROW_HEADING - _ARROW_TURN)
+    direction = QPointF(math.cos(end_heading), -math.sin(end_heading))
+    tip = junction + direction * _HEAD_LENGTH
+    outward = {
+        "center": center,
         "start": start,
-        "end_x": end.x(),
-        "end_y": end.y(),
+        "tail": tail,
+        "junction": junction,
+        "direction": direction,
+        "tip": tip,
     }
-
-
-def _shared_arrow_geometry() -> dict:
-    tail = _SYMBOL.center()
-    tip = _outside_tip(_SYMBOL)
-    sweep_deg = -_ARROW_SWEEP
-    chord_x = tip.x() - tail.x()
-    chord_y = tip.y() - tail.y()
-    distance = math.hypot(chord_x, chord_y)
-    if distance <= 0:
-        raise RuntimeError("arrow length is zero")
-    half = math.radians(sweep_deg) / 2
-    if abs(math.sin(half)) < 1e-3:
-        raise RuntimeError("arrow sweep is too small")
-    radius = (distance / 2) / abs(math.sin(half))
-    mid_x = (tail.x() + tip.x()) / 2
-    mid_y = (tail.y() + tip.y()) / 2
-    unit_x = chord_x / distance
-    unit_y = chord_y / distance
-    left_x = unit_y
-    left_y = -unit_x
-    center_offset = radius * math.cos(abs(half))
-    if sweep_deg < 0:
-        center_offset = -center_offset
-    center_x = mid_x + left_x * center_offset
-    center_y = mid_y + left_y * center_offset
-    start_deg = math.degrees(math.atan2(center_y - tail.y(), tail.x() - center_x))
-    head_deg = math.degrees(_HEAD_LENGTH / radius)
-    if abs(sweep_deg) <= head_deg + 24:
-        raise RuntimeError("arrow head leaves no visible arc")
-    shaft_start = round(start_deg * 16) / 16
-    shaft_span = round((sweep_deg + head_deg) * 16) / 16
-    shaft_end = shaft_start + shaft_span
-    outward_tangent_x, outward_tangent_y = _sweep_tangent(shaft_end, sweep_deg)
-    leave_x, leave_y = _sweep_tangent(shaft_start, sweep_deg)
-    return {
-        "center_x": center_x,
-        "center_y": center_y,
-        "radius": radius,
-        "shaft_start": shaft_start,
-        "shaft_span": shaft_span,
-        "outward_junction": _circle_point(center_x, center_y, radius, shaft_end),
-        "outward_tangent_x": outward_tangent_x,
-        "outward_tangent_y": outward_tangent_y,
-        "inward_junction": _circle_point(center_x, center_y, radius, shaft_start),
-        "inward_tangent_x": -leave_x,
-        "inward_tangent_y": -leave_y,
+    outward["shape"] = _arrow_shape(outward)
+    outward["mask"] = _dilate(outward["shape"], _ARROW_GAP)
+    # 沿尾部与顶点连线的中垂线镜像，两端互换，弧线曲率与凸出方向保持一致
+    swap = _swap_ends(tail, tip)
+    swapped_direction = swap.map(tip) - swap.map(tip - direction)
+    inward = {
+        "center": swap.map(center),
+        "tail": swap.map(tail),
+        "junction": swap.map(junction),
+        "direction": swapped_direction,
+        "tip": swap.map(tip),
+        "shape": swap.map(outward["shape"]),
+        "mask": swap.map(outward["mask"]),
     }
+    return {"outward": outward, "inward": inward}
 
 
-def _circle_point(center_x: float, center_y: float, radius: float, angle_deg: float) -> QPointF:
-    rad = math.radians(angle_deg)
-    return QPointF(center_x + radius * math.cos(rad), center_y - radius * math.sin(rad))
+def _swap_ends(first: QPointF, second: QPointF) -> QTransform:
+    chord = second - first
+    length = math.hypot(chord.x(), chord.y())
+    if length <= 0:
+        raise RuntimeError("arrow tail and tip coincide")
+    ax = chord.x() / length
+    ay = chord.y() / length
+    middle = (first + second) / 2
+    offset = 2 * (middle.x() * ax + middle.y() * ay)
+    return QTransform(
+        1 - 2 * ax * ax,
+        -2 * ax * ay,
+        -2 * ax * ay,
+        1 - 2 * ay * ay,
+        offset * ax,
+        offset * ay,
+    )
 
 
-def _sweep_tangent(angle_deg: float, sweep_deg: float) -> tuple[float, float]:
-    rad = math.radians(angle_deg)
-    tangent_x = -math.sin(rad)
-    tangent_y = -math.cos(rad)
-    if sweep_deg < 0:
-        tangent_x = -tangent_x
-        tangent_y = -tangent_y
-    return tangent_x, tangent_y
+def _circle_point(center: QPointF, radius: float, angle_deg: float) -> QPointF:
+    angle = math.radians(angle_deg)
+    return QPointF(center.x() + radius * math.cos(angle), center.y() - radius * math.sin(angle))
 
 
-def _stroke_shaft(painter: QPainter, geometry: dict, width: float) -> None:
-    _apply_pen(painter, width, ICON_COLOR)
-    pen = painter.pen()
-    pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-    painter.setPen(pen)
+def _arrow_shape(arrow: dict) -> QPainterPath:
+    center = arrow["center"]
     rect = QRectF(
-        geometry["center_x"] - geometry["radius"],
-        geometry["center_y"] - geometry["radius"],
-        geometry["radius"] * 2,
-        geometry["radius"] * 2,
+        center.x() - _ARROW_RADIUS,
+        center.y() - _ARROW_RADIUS,
+        _ARROW_RADIUS * 2,
+        _ARROW_RADIUS * 2,
     )
-    painter.drawArc(
-        rect,
-        int(round(geometry["shaft_start"] * 16)),
-        int(round(geometry["shaft_span"] * 16)),
-    )
+    line = QPainterPath()
+    line.arcMoveTo(rect, arrow["start"])
+    line.arcTo(rect, arrow["start"], -_ARROW_TURN)
+    shaft = _stroke(line, _ARROW_WIDTH, Qt.PenCapStyle.FlatCap)
+    return shaft.united(_head_shape(arrow["junction"], arrow["direction"]))
 
 
-def _stroke_inward_line(painter: QPainter, layout: dict, width: float) -> None:
-    _apply_pen(painter, width, ICON_COLOR)
-    pen = painter.pen()
-    pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-    painter.setPen(pen)
-    rect = QRectF(
-        layout["center_x"] - layout["radius"],
-        layout["center_y"] - layout["radius"],
-        layout["radius"] * 2,
-        layout["radius"] * 2,
-    )
-    painter.drawArc(
-        rect,
-        int(round(layout["arc_start"] * 16)),
-        int(round(layout["arc_span"] * 16)),
-    )
-
-
-def _stroke_inward_head(painter: QPainter, layout: dict, head_extra: float) -> None:
-    path = _arrow_head_path(
-        layout["base"],
-        layout["axis_x"],
-        layout["axis_y"],
-        layout["axis_length"],
-        _HEAD_HALF,
-        _HEAD_OVERLAP,
-    )
-    if head_extra > 0:
-        path = _dilate_path(path, head_extra)
-    painter.save()
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(ICON_COLOR)
-    painter.drawPath(path)
-    painter.restore()
-
-
-def _dilate_path(path: QPainterPath, radius: float) -> QPainterPath:
-    stroker = QPainterPathStroker()
-    stroker.setWidth(radius * 2)
-    stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
-    stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    dilated = path.united(stroker.createStroke(path))
-    dilated.setFillRule(Qt.FillRule.WindingFill)
-    return dilated
-
-
-def _stroke_head(
-    painter: QPainter,
-    junction: QPointF,
-    tangent_x: float,
-    tangent_y: float,
-    head_extra: float,
-) -> None:
-    _draw_arrow_head(
-        painter,
-        junction,
-        tangent_x,
-        tangent_y,
-        _HEAD_LENGTH + head_extra,
-        _HEAD_HALF + head_extra,
-        _HEAD_OVERLAP + head_extra,
-    )
-
-
-def _arrow_head_path(
-    junction: QPointF,
-    unit_x: float,
-    unit_y: float,
-    length: float,
-    half: float,
-    back: float,
-) -> QPainterPath:
-    side_x = -unit_y
-    side_y = unit_x
-    base = QPointF(junction.x() - unit_x * back, junction.y() - unit_y * back)
-    tip = QPointF(junction.x() + unit_x * length, junction.y() + unit_y * length)
-    left = QPointF(base.x() + side_x * half, base.y() + side_y * half)
-    right = QPointF(base.x() - side_x * half, base.y() - side_y * half)
+def _head_shape(junction: QPointF, direction: QPointF) -> QPainterPath:
+    side = QPointF(-direction.y(), direction.x())
     path = QPainterPath()
-    path.moveTo(tip)
-    path.lineTo(left)
-    path.lineTo(right)
+    path.moveTo(junction + direction * _HEAD_LENGTH)
+    path.lineTo(junction + side * _HEAD_HALF)
+    path.lineTo(junction - side * _HEAD_HALF)
     path.closeSubpath()
     return path
 
 
-def _draw_arrow_head(
-    painter: QPainter,
-    junction: QPointF,
-    unit_x: float,
-    unit_y: float,
-    length: float,
-    half: float,
-    back: float,
-) -> None:
-    painter.save()
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(ICON_COLOR)
-    painter.drawPath(_arrow_head_path(junction, unit_x, unit_y, length, half, back))
-    painter.restore()
+def _stroke(path: QPainterPath, width: float, cap: Qt.PenCapStyle) -> QPainterPath:
+    stroker = QPainterPathStroker()
+    stroker.setWidth(width)
+    stroker.setCapStyle(cap)
+    stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    return stroker.createStroke(path)
 
 
-def _apply_pen(painter: QPainter, width: float, color: QColor) -> None:
-    pen = QPen(color)
-    pen.setWidthF(width)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(pen)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
+def _dilate(path: QPainterPath, radius: float) -> QPainterPath:
+    return path.united(_stroke(path, radius * 2, Qt.PenCapStyle.RoundCap))
+
+
+def _disk_shape() -> QPainterPath:
+    case = QPainterPath()
+    case.addRoundedRect(_BODY, _DISK_CORNER, _DISK_CORNER)
+    platter = QPainterPath()
+    platter.addEllipse(_BODY.center(), _DISK_PLATTER, _DISK_PLATTER)
+    return _stroke(case, _BODY_STROKE, Qt.PenCapStyle.RoundCap).united(
+        _stroke(platter, _BODY_STROKE, Qt.PenCapStyle.RoundCap)
+    )
+
+
+def _window_shape() -> QPainterPath:
+    frame = QPainterPath()
+    frame.addRoundedRect(_BODY, _WINDOW_CORNER, _WINDOW_CORNER)
+    bar_y = _BODY.top() + _WINDOW_BAR
+    bar = QPainterPath()
+    bar.moveTo(_BODY.left() + _WINDOW_BAR_INSET, bar_y)
+    bar.lineTo(_BODY.right() - _WINDOW_BAR_INSET, bar_y)
+    return _stroke(frame, _BODY_STROKE, Qt.PenCapStyle.RoundCap).united(
+        _stroke(bar, _BODY_STROKE, Qt.PenCapStyle.RoundCap)
+    )
+
+
+def _gear_shape() -> QPainterPath:
+    width = _BODY_STROKE * _arrow_frame_scale()
+    unit = _gear_outline(1.0)
+    unit_extent = max(unit.boundingRect().width(), unit.boundingRect().height())
+    # 圆角连接的描边在每个方向都向外扩展半个线宽
+    radius = (_ICON_EXTENT - width) / unit_extent
+    outline = _gear_outline(radius)
+    hole = QPainterPath()
+    hole.addEllipse(QPointF(0.0, 0.0), radius * _GEAR_HOLE, radius * _GEAR_HOLE)
+    shape = _stroke(outline, width, Qt.PenCapStyle.RoundCap).united(
+        _stroke(hole, width, Qt.PenCapStyle.RoundCap)
+    )
+    offset = _CANVAS_CENTER - shape.boundingRect().center()
+    return shape.translated(offset)
+
+
+def _gear_outline(radius: float) -> QPainterPath:
+    span = 2 * math.pi / _GEAR_TEETH
+    path = QPainterPath()
+    for index in range(_GEAR_TEETH):
+        middle = index * span - math.pi / 2
+        points = (
+            (radius * _GEAR_ROOT, middle - span * 0.36),
+            (radius, middle - span * 0.14),
+            (radius, middle + span * 0.14),
+            (radius * _GEAR_ROOT, middle + span * 0.36),
+        )
+        for distance, angle in points:
+            point = QPointF(distance * math.cos(angle), distance * math.sin(angle))
+            if path.elementCount() == 0:
+                path.moveTo(point)
+            else:
+                path.lineTo(point)
+    path.closeSubpath()
+    return path
+
+
+def _stop_shape() -> QPainterPath:
+    corner = _STOP_CORNER * _arrow_frame_scale()
+    path = QPainterPath()
+    path.addRoundedRect(
+        QRectF(
+            _CANVAS_CENTER.x() - _ICON_EXTENT / 2,
+            _CANVAS_CENTER.y() - _ICON_EXTENT / 2,
+            _ICON_EXTENT,
+            _ICON_EXTENT,
+        ),
+        corner,
+        corner,
+    )
+    return path

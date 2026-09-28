@@ -1,19 +1,23 @@
 import math
 
 from PySide6.QtCore import QPointF
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QPainterPath, QTransform
 
 from videocutter.icons import (
     _ARROW_GAP,
-    _HEAD_HALF,
-    _HEAD_LENGTH,
-    _HEAD_OVERLAP,
-    _arrow_head_path,
-    _dilate_path,
-    _draw_arc_arrow,
-    _inward_layout,
+    _ARROW_RADIUS,
+    _ARROW_TURN,
+    _BODY,
+    _arrow_frame_transform,
+    _arrow_layout,
+    _disk_shape,
+    _draw_export,
+    _draw_open_project,
+    _draw_save_project,
+    _draw_settings,
+    _draw_stop_export,
+    _head_shape,
     _paint,
-    _shared_arrow_geometry,
     export_icon,
     open_project_icon,
     save_project_icon,
@@ -22,185 +26,164 @@ from videocutter.icons import (
 )
 
 
-def _image(icon) -> QImage:
-    image = icon.pixmap(32, 32).toImage().convertToFormat(QImage.Format.Format_ARGB32)
-    if image.width() != 32 or image.height() != 32:
-        image = image.scaled(32, 32)
-    return image
+def _distance(first: QPointF, second: QPointF) -> float:
+    return math.hypot(first.x() - second.x(), first.y() - second.y())
 
 
-def _opaque(image: QImage, x: int, y: int) -> bool:
-    for dy in range(-2, 3):
-        for dx in range(-2, 3):
-            px = x + dx
-            py = y + dy
-            if px < 0 or py < 0 or px >= image.width() or py >= image.height():
-                continue
-            if image.pixelColor(px, py).alpha() > 80:
-                return True
-    return False
+def _dot(first: QPointF, second: QPointF) -> float:
+    return first.x() * second.x() + first.y() * second.y()
 
 
-def _signature(image: QImage) -> tuple[int, ...]:
-    values = []
-    for y in range(0, image.height(), 2):
-        for x in range(0, image.width(), 2):
-            color = image.pixelColor(x, y)
-            values.append(color.alpha())
-    return tuple(values)
+def _alpha_image(draw) -> QImage:
+    return _paint(draw).toImage().convertToFormat(QImage.Format.Format_ARGB32)
 
 
-def _centroid(image: QImage) -> tuple[float, float]:
-    total = 0
-    sum_x = 0
-    sum_y = 0
+def _ink_box(image: QImage) -> tuple[int, int, int, int]:
+    xs = []
+    ys = []
     for y in range(image.height()):
         for x in range(image.width()):
-            if image.pixelColor(x, y).alpha() <= 80:
-                continue
-            sum_x += x
-            sum_y += y
-            total += 1
-    if total == 0:
-        raise RuntimeError("icon has no ink")
-    return sum_x / total, sum_y / total
-
-
-def _ink(image: QImage, x: int, y: int) -> int:
-    count = 0
-    for dy in range(-2, 3):
-        for dx in range(-2, 3):
-            px = x + dx
-            py = y + dy
-            if px < 0 or py < 0 or px >= image.width() or py >= image.height():
-                continue
-            if image.pixelColor(px, py).alpha() > 80:
-                count += 1
-    return count
-
-
-def _near_ink(pixels: set[tuple[int, int]], x: float, y: float) -> bool:
-    for px, py in pixels:
-        if math.hypot(px - x, py - y) <= 1.6:
-            return True
-    return False
-
-
-def _ink_pixels(draw) -> set[tuple[int, int]]:
-    image = _paint(draw).toImage()
-    step = int(image.devicePixelRatio())
-    pixels = set()
-    for y in range(0, image.height(), step):
-        for x in range(0, image.width(), step):
             if image.pixelColor(x, y).alpha() > 80:
-                pixels.add((x // step, y // step))
-    return pixels
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        raise RuntimeError("icon has no ink")
+    return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-def test_inward_arrow_reverses_the_outward_arrow_ends(qapp):
-    geometry = _shared_arrow_geometry()
-    layout = _inward_layout(geometry)
-    center = geometry["inward_junction"]
-    assert math.hypot(layout["tip"].x() - center.x(), layout["tip"].y() - center.y()) < 1e-4
-    assert abs(layout["arc_span"] - geometry["shaft_span"]) < 1e-9
-    assert abs(layout["radius"] - geometry["radius"]) < 1e-9
-    start = math.radians(layout["arc_start"])
-    travel_x = math.sin(start) if layout["arc_span"] < 0 else -math.sin(start)
-    travel_y = math.cos(start) if layout["arc_span"] < 0 else -math.cos(start)
-    assert abs(layout["axis_x"] + travel_x) < 1e-4
-    assert abs(layout["axis_y"] + travel_y) < 1e-4
-    outward_tip_x = geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH
-    outward_tip_y = geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH
-    assert math.hypot(layout["tail"].x() - outward_tip_x, layout["tail"].y() - outward_tip_y) < 1e-4
-    inward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=True))
-    outward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=False))
-    assert _near_ink(inward, layout["tip"].x(), layout["tip"].y())
-    assert _near_ink(inward, layout["tail"].x(), layout["tail"].y())
-    assert _near_ink(outward, outward_tip_x, outward_tip_y)
-    assert inward - outward
-    assert outward - inward
+_FLATTEN_SCALE = 64.0
 
 
-def test_inward_mask_uses_the_same_expansion_radius(qapp):
-    geometry = _shared_arrow_geometry()
-    layout = _inward_layout(geometry)
-    mask = _dilate_path(
-        _arrow_head_path(
-            layout["base"],
-            layout["axis_x"],
-            layout["axis_y"],
-            layout["axis_length"],
-            _HEAD_HALF,
-            _HEAD_OVERLAP,
-        ),
-        _ARROW_GAP,
-    )
-    axis_x = layout["axis_x"]
-    axis_y = layout["axis_y"]
-    side_x = -axis_y
-    side_y = axis_x
-    tip = layout["tip"]
-    left_x = layout["base"].x() - axis_x * _HEAD_OVERLAP + side_x * _HEAD_HALF
-    left_y = layout["base"].y() - axis_y * _HEAD_OVERLAP + side_y * _HEAD_HALF
-    mid_x = (tip.x() + left_x) / 2
-    mid_y = (tip.y() + left_y) / 2
-    edge_x = left_x - tip.x()
-    edge_y = left_y - tip.y()
-    normal_x = -edge_y
-    normal_y = edge_x
-    if normal_x * side_x + normal_y * side_y < 0:
-        normal_x = -normal_x
-        normal_y = -normal_y
-    normal_length = math.hypot(normal_x, normal_y)
-    normal_x /= normal_length
-    normal_y /= normal_length
-    inside = QPointF(mid_x + normal_x * _ARROW_GAP * 0.5, mid_y + normal_y * _ARROW_GAP * 0.5)
-    outside = QPointF(mid_x + normal_x * _ARROW_GAP * 1.35, mid_y + normal_y * _ARROW_GAP * 1.35)
-    assert mask.contains(inside)
-    assert mask.contains(outside) is False
-    past_tip = QPointF(tip.x() + axis_x * _ARROW_GAP * 0.5, tip.y() + axis_y * _ARROW_GAP * 0.5)
-    beyond_tip = QPointF(tip.x() + axis_x * _ARROW_GAP * 1.35, tip.y() + axis_y * _ARROW_GAP * 1.35)
-    assert mask.contains(past_tip)
-    assert mask.contains(beyond_tip) is False
+def _shape_polygons(path: QPainterPath):
+    return path.toSubpathPolygons(QTransform.fromScale(_FLATTEN_SCALE, _FLATTEN_SCALE))
 
 
-def test_arrowhead_base_is_perpendicular_to_the_arc(qapp):
-    geometry = _shared_arrow_geometry()
-    end = math.radians(geometry["shaft_start"] + geometry["shaft_span"])
-    assert abs(geometry["outward_tangent_x"] - math.sin(end)) < 1e-6
-    assert abs(geometry["outward_tangent_y"] - math.cos(end)) < 1e-6
-    start = math.radians(geometry["shaft_start"])
-    assert abs(geometry["inward_tangent_x"] + math.sin(start)) < 1e-6
-    assert abs(geometry["inward_tangent_y"] + math.cos(start)) < 1e-6
+def _distance_to_shape(point: QPointF, polygons) -> float:
+    point = point * _FLATTEN_SCALE
+    return _distance_to_polygons(point, polygons) / _FLATTEN_SCALE
 
 
-def test_toolbar_icons_share_one_stroke_style(qapp):
-    opened = _image(open_project_icon())
-    saved = _image(save_project_icon())
-    settings = _image(settings_icon())
-    exported = _image(export_icon())
-    assert _signature(opened) != _signature(saved)
-    assert _signature(opened) != _signature(exported)
-    assert _signature(saved) != _signature(exported)
-    assert _signature(settings) != _signature(exported)
-    for image in (opened, saved, exported):
-        center_x, center_y = _centroid(image)
-        assert abs(center_x - 16) < 3
-        assert abs(center_y - 16) < 3
-    assert _opaque(opened, 16, 22)
-    assert _opaque(opened, 20, 6)
-    assert _ink(opened, 18, 8) >= 8
-    assert _opaque(saved, 16, 22)
-    assert _opaque(saved, 21, 4)
-    assert _ink(saved, 16, 12) >= 8
-    assert _opaque(saved, 30, 1) is False
-    assert _opaque(settings, 16, 6)
-    assert settings.pixelColor(16, 16).alpha() < 20
-    assert _opaque(exported, 16, 22)
-    assert _opaque(exported, 21, 4)
-    assert _ink(exported, 16, 12) >= 8
-    assert _opaque(exported, 30, 1) is False
-    stopped = _image(stop_export_icon())
-    assert _signature(stopped) != _signature(exported)
-    assert stopped.pixelColor(16, 16).alpha() > 200
-    assert _opaque(stopped, 2, 2) is False
+def _distance_to_polygons(point: QPointF, polygons) -> float:
+    best = math.inf
+    for polygon in polygons:
+        for index in range(polygon.count() - 1):
+            start = polygon.at(index)
+            end = polygon.at(index + 1)
+            segment = end - start
+            length = _dot(segment, segment)
+            if length == 0:
+                best = min(best, _distance(point, start))
+                continue
+            t = max(0.0, min(1.0, _dot(point - start, segment) / length))
+            best = min(best, _distance(point, start + segment * t))
+    return best
+
+
+def test_inward_tip_is_the_disk_center_and_tail_is_the_outward_tip():
+    layout = _arrow_layout()
+    assert _distance(layout["inward"]["tip"], _BODY.center()) < 1e-6
+    assert _distance(layout["outward"]["tail"], _BODY.center()) < 1e-6
+    assert _distance(layout["inward"]["tail"], layout["outward"]["tip"]) < 1e-6
+
+
+def test_both_arcs_share_radius_and_turn():
+    layout = _arrow_layout()
+    for arrow in (layout["outward"], layout["inward"]):
+        center = arrow["center"]
+        assert abs(_distance(arrow["tail"], center) - _ARROW_RADIUS) < 1e-6
+        assert abs(_distance(arrow["junction"], center) - _ARROW_RADIUS) < 1e-6
+        tail = arrow["tail"] - center
+        junction = arrow["junction"] - center
+        cosine = _dot(tail, junction) / (_ARROW_RADIUS * _ARROW_RADIUS)
+        assert abs(math.degrees(math.acos(cosine)) - _ARROW_TURN) < 1e-4
+
+
+def test_head_base_is_perpendicular_to_the_arc_at_the_join():
+    layout = _arrow_layout()
+    for arrow in (layout["outward"], layout["inward"]):
+        direction = arrow["direction"]
+        assert abs(math.hypot(direction.x(), direction.y()) - 1) < 1e-6
+        radial = arrow["junction"] - arrow["center"]
+        assert abs(_dot(direction, radial)) < 1e-6
+        head = _head_shape(arrow["junction"], direction)
+        tip = QPointF(head.elementAt(0).x, head.elementAt(0).y)
+        left = QPointF(head.elementAt(1).x, head.elementAt(1).y)
+        right = QPointF(head.elementAt(2).x, head.elementAt(2).y)
+        assert _distance(tip, arrow["tip"]) < 1e-6
+        assert abs(_dot(left - right, direction)) < 1e-6
+        assert _distance((left + right) / 2, arrow["junction"]) < 1e-6
+
+
+def test_mask_is_the_arrow_expanded_by_one_gap_on_every_side():
+    layout = _arrow_layout()
+    for arrow in (layout["outward"], layout["inward"]):
+        shape = arrow["shape"]
+        polygons = _shape_polygons(shape)
+        box = shape.boundingRect().adjusted(-3, -3, 3, 3)
+        step = 0.4
+        y = box.top()
+        checked = 0
+        while y < box.bottom():
+            x = box.left()
+            while x < box.right():
+                point = QPointF(x, y)
+                if not shape.contains(point):
+                    distance = _distance_to_shape(point, polygons)
+                    if distance < _ARROW_GAP - 0.1:
+                        assert arrow["mask"].contains(point)
+                        checked += 1
+                    elif distance > _ARROW_GAP + 0.1:
+                        assert not arrow["mask"].contains(point)
+                x += step
+            y += step
+        assert checked > 100
+
+
+def test_body_is_erased_inside_the_mask_ring(qapp):
+    layout = _arrow_layout()
+    for draw, arrow in ((_draw_open_project, layout["inward"]), (_draw_save_project, layout["outward"])):
+        image = _alpha_image(draw)
+        inverse, invertible = _arrow_frame_transform(_disk_shape(), arrow).inverted()
+        assert invertible
+        body = _disk_shape()
+        polygons = _shape_polygons(arrow["shape"])
+        ratio = image.devicePixelRatio()
+        erased = 0
+        for py in range(image.height()):
+            for px in range(image.width()):
+                point = inverse.map(QPointF((px + 0.5) / ratio, (py + 0.5) / ratio))
+                if arrow["shape"].contains(point) or not body.contains(point):
+                    continue
+                distance = _distance_to_shape(point, polygons)
+                if 0.6 < distance < _ARROW_GAP - 0.6:
+                    assert image.pixelColor(px, py).alpha() < 40
+                    erased += 1
+        assert erased > 0
+
+
+def test_every_icon_has_the_same_outer_size(qapp):
+    boxes = [
+        _ink_box(_alpha_image(draw))
+        for draw in (_draw_open_project, _draw_save_project, _draw_settings, _draw_export, _draw_stop_export)
+    ]
+    sizes = [max(right - left, bottom - top) for left, top, right, bottom in boxes]
+    assert max(sizes) - min(sizes) <= 1
+    for left, top, right, bottom in boxes:
+        assert abs((left + right) / 2 - 32) <= 1
+        assert abs((top + bottom) / 2 - 32) <= 1
+
+
+def test_toolbar_icons_render_distinct_shapes(qapp):
+    images = [
+        icon.pixmap(32, 32).toImage().convertToFormat(QImage.Format.Format_ARGB32)
+        for icon in (open_project_icon(), save_project_icon(), settings_icon(), export_icon(), stop_export_icon())
+    ]
+    signatures = {
+        tuple(image.pixelColor(x, y).alpha() for y in range(image.height()) for x in range(image.width()))
+        for image in images
+    }
+    assert len(signatures) == len(images)
+    settings = _alpha_image(_draw_settings)
+    assert settings.pixelColor(32, 32).alpha() < 20
+    stop = _alpha_image(_draw_stop_export)
+    assert stop.pixelColor(32, 32).alpha() > 200
