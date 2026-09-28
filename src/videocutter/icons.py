@@ -12,6 +12,7 @@ _ARROW_GAP = 1.9
 _ARROW_SWEEP = 118.0
 _HEAD_LENGTH = 6.8
 _HEAD_HALF = 4.6
+_HEAD_OVERLAP = 0.7
 
 
 def open_project_icon() -> QIcon:
@@ -120,22 +121,20 @@ def _draw_stop_export(painter: QPainter) -> None:
 def _draw_arc_arrow(painter: QPainter, inward: bool) -> None:
     geometry = _shared_arrow_geometry()
     if inward:
-        head_tip = geometry["tail"]
+        junction = geometry["inward_junction"]
         tangent_x = geometry["inward_tangent_x"]
         tangent_y = geometry["inward_tangent_y"]
     else:
-        head_tip = geometry["tip"]
+        junction = geometry["outward_junction"]
         tangent_x = geometry["outward_tangent_x"]
         tangent_y = geometry["outward_tangent_y"]
     painter.save()
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
     _stroke_shaft(painter, geometry, _ARROW_WIDTH + _ARROW_GAP * 2)
-    _stroke_head(painter, head_tip, tangent_x, tangent_y, _ARROW_GAP)
+    _stroke_head(painter, junction, tangent_x, tangent_y, _ARROW_GAP)
     painter.restore()
     _stroke_shaft(painter, geometry, _ARROW_WIDTH)
-    if inward:
-        _erase_head_cap(painter, head_tip, _ARROW_WIDTH)
-    _stroke_head(painter, head_tip, tangent_x, tangent_y, 0.0)
+    _stroke_head(painter, junction, tangent_x, tangent_y, 0.0)
 
 
 def _shared_arrow_geometry() -> dict:
@@ -166,23 +165,29 @@ def _shared_arrow_geometry() -> dict:
     head_deg = math.degrees(_HEAD_LENGTH / radius)
     if abs(sweep_deg) <= head_deg + 24:
         raise RuntimeError("arrow head leaves no visible arc")
-    shaft_start = start_deg
-    shaft_span = sweep_deg + head_deg
-    outward_tangent_x, outward_tangent_y = _sweep_tangent(start_deg + sweep_deg, sweep_deg)
-    inward_tangent_x, inward_tangent_y = _sweep_tangent(start_deg, -sweep_deg)
+    shaft_start = round(start_deg * 16) / 16
+    shaft_span = round((sweep_deg + head_deg) * 16) / 16
+    shaft_end = shaft_start + shaft_span
+    outward_tangent_x, outward_tangent_y = _sweep_tangent(shaft_end, sweep_deg)
+    leave_x, leave_y = _sweep_tangent(shaft_start, sweep_deg)
     return {
         "center_x": center_x,
         "center_y": center_y,
         "radius": radius,
         "shaft_start": shaft_start,
         "shaft_span": shaft_span,
-        "tail": tail,
-        "tip": tip,
+        "outward_junction": _circle_point(center_x, center_y, radius, shaft_end),
         "outward_tangent_x": outward_tangent_x,
         "outward_tangent_y": outward_tangent_y,
-        "inward_tangent_x": inward_tangent_x,
-        "inward_tangent_y": inward_tangent_y,
+        "inward_junction": _circle_point(center_x, center_y, radius, shaft_start),
+        "inward_tangent_x": -leave_x,
+        "inward_tangent_y": -leave_y,
     }
+
+
+def _circle_point(center_x: float, center_y: float, radius: float, angle_deg: float) -> QPointF:
+    rad = math.radians(angle_deg)
+    return QPointF(center_x + radius * math.cos(rad), center_y - radius * math.sin(rad))
 
 
 def _sweep_tangent(angle_deg: float, sweep_deg: float) -> tuple[float, float]:
@@ -213,45 +218,37 @@ def _stroke_shaft(painter: QPainter, geometry: dict, width: float) -> None:
     )
 
 
-def _erase_head_cap(painter: QPainter, tip: QPointF, width: float) -> None:
-    painter.save()
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(ICON_COLOR)
-    radius = width / 2
-    painter.drawEllipse(QRectF(tip.x() - radius, tip.y() - radius, width, width))
-    painter.restore()
-
-
 def _stroke_head(
     painter: QPainter,
-    tip: QPointF,
+    junction: QPointF,
     tangent_x: float,
     tangent_y: float,
     head_extra: float,
 ) -> None:
-    grown_tip = QPointF(tip.x() + tangent_x * head_extra, tip.y() + tangent_y * head_extra)
     _draw_arrow_head(
         painter,
-        grown_tip,
+        junction,
         tangent_x,
         tangent_y,
-        _HEAD_LENGTH + head_extra * 2,
+        _HEAD_LENGTH + head_extra,
         _HEAD_HALF + head_extra,
+        _HEAD_OVERLAP + head_extra,
     )
 
 
 def _draw_arrow_head(
     painter: QPainter,
-    tip: QPointF,
+    junction: QPointF,
     unit_x: float,
     unit_y: float,
     length: float,
     half: float,
+    back: float,
 ) -> None:
     side_x = -unit_y
     side_y = unit_x
-    base = QPointF(tip.x() - unit_x * length, tip.y() - unit_y * length)
+    base = QPointF(junction.x() - unit_x * back, junction.y() - unit_y * back)
+    tip = QPointF(junction.x() + unit_x * length, junction.y() + unit_y * length)
     left = QPointF(base.x() + side_x * half, base.y() + side_y * half)
     right = QPointF(base.x() - side_x * half, base.y() - side_y * half)
     path = QPainterPath()

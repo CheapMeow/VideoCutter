@@ -1,8 +1,13 @@
+import math
+
 from PySide6.QtGui import QImage
 
 from videocutter.icons import (
+    _ARROW_WIDTH,
     _draw_arc_arrow,
     _paint,
+    _shared_arrow_geometry,
+    _stroke_shaft,
     export_icon,
     open_project_icon,
     save_project_icon,
@@ -68,25 +73,36 @@ def _ink(image: QImage, x: int, y: int) -> int:
     return count
 
 
-def test_open_and_save_arrows_follow_the_same_arc(qapp):
-    def ink(inward: bool) -> set[tuple[int, int]]:
-        image = _paint(lambda painter: _draw_arc_arrow(painter, inward=inward)).toImage()
-        step = int(image.devicePixelRatio())
-        pixels = set()
-        for y in range(0, image.height(), step):
-            for x in range(0, image.width(), step):
-                if image.pixelColor(x, y).alpha() > 80:
-                    pixels.add((x // step, y // step))
-        return pixels
+def _ink_pixels(draw) -> set[tuple[int, int]]:
+    image = _paint(draw).toImage()
+    step = int(image.devicePixelRatio())
+    pixels = set()
+    for y in range(0, image.height(), step):
+        for x in range(0, image.width(), step):
+            if image.pixelColor(x, y).alpha() > 80:
+                pixels.add((x // step, y // step))
+    return pixels
 
-    outward = ink(False)
-    inward = ink(True)
-    shared = outward & inward
-    rows = {y for _, y in shared}
-    assert len(shared) >= 20
-    assert max(rows) - min(rows) >= 6
-    assert outward - inward
-    assert inward - outward
+
+def test_open_and_save_arrows_follow_the_same_arc(qapp):
+    shaft = _ink_pixels(lambda painter: _stroke_shaft(painter, _shared_arrow_geometry(), _ARROW_WIDTH))
+    outward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=False))
+    inward = _ink_pixels(lambda painter: _draw_arc_arrow(painter, inward=True))
+    assert len(shaft) > 20
+    assert shaft <= outward
+    assert shaft <= inward
+    assert outward - shaft
+    assert inward - shaft
+
+
+def test_arrowhead_base_is_perpendicular_to_the_arc(qapp):
+    geometry = _shared_arrow_geometry()
+    end = math.radians(geometry["shaft_start"] + geometry["shaft_span"])
+    assert abs(geometry["outward_tangent_x"] - math.sin(end)) < 1e-6
+    assert abs(geometry["outward_tangent_y"] - math.cos(end)) < 1e-6
+    start = math.radians(geometry["shaft_start"])
+    assert abs(geometry["inward_tangent_x"] + math.sin(start)) < 1e-6
+    assert abs(geometry["inward_tangent_y"] + math.cos(start)) < 1e-6
 
 
 def test_toolbar_icons_share_one_stroke_style(qapp):
