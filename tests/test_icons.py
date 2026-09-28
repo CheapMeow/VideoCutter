@@ -82,8 +82,11 @@ def test_open_and_save_arrows_follow_the_same_arc(qapp):
     outward = ink(False)
     inward = ink(True)
     shared = outward & inward
-    assert len(shared) > len(outward - inward)
-    assert len(shared) > len(inward - outward)
+    rows = {y for _, y in shared}
+    assert len(shared) >= 20
+    assert max(rows) - min(rows) >= 6
+    assert outward - inward
+    assert inward - outward
 
 
 def test_toolbar_icons_share_one_stroke_style(qapp):

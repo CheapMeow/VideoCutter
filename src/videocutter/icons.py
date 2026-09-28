@@ -10,8 +10,8 @@ _SYMBOL_STROKE = 2.3
 _ARROW_WIDTH = 3.5
 _ARROW_GAP = 1.9
 _ARROW_SWEEP = 118.0
-_HEAD_LENGTH = 3.4
-_HEAD_HALF = 3.6
+_HEAD_LENGTH = 6.8
+_HEAD_HALF = 4.6
 
 
 def open_project_icon() -> QIcon:
