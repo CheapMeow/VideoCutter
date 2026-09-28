@@ -5,9 +5,13 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
 
 ICON_COLOR = QColor("#e6e6e6")
-_HEAD_LENGTH = 4.6
-_SYMBOL = QRectF(2.2, 12.4, 16.2, 15.2)
-_ARROW_SWEEP = 125.0
+_SYMBOL = QRectF(8.2, 9.2, 15.6, 13.6)
+_SYMBOL_STROKE = 2.3
+_ARROW_WIDTH = 3.5
+_ARROW_GAP = 1.9
+_ARROW_SWEEP = 118.0
+_HEAD_LENGTH = 6.4
+_HEAD_HALF = 3.8
 
 
 def open_project_icon() -> QIcon:
@@ -48,18 +52,20 @@ def _paint(draw) -> QPixmap:
 
 
 def _draw_disk(painter: QPainter) -> None:
-    painter.drawRoundedRect(_SYMBOL, 2.0, 2.0)
-    painter.drawEllipse(_SYMBOL.center(), 3.1, 3.1)
+    _apply_pen(painter, _SYMBOL_STROKE, ICON_COLOR)
+    painter.drawRoundedRect(_SYMBOL, 2.2, 2.2)
+    painter.drawEllipse(_SYMBOL.center(), 4.4, 4.4)
 
 
 def _draw_window(painter: QPainter) -> None:
-    painter.drawRoundedRect(_SYMBOL, 1.6, 1.6)
-    bar_y = _SYMBOL.top() + 4.0
-    painter.drawLine(QPointF(_SYMBOL.left() + 1.5, bar_y), QPointF(_SYMBOL.right() - 1.5, bar_y))
+    _apply_pen(painter, _SYMBOL_STROKE, ICON_COLOR)
+    painter.drawRoundedRect(_SYMBOL, 1.8, 1.8)
+    bar_y = _SYMBOL.top() + 3.8
+    painter.drawLine(QPointF(_SYMBOL.left() + 1.6, bar_y), QPointF(_SYMBOL.right() - 1.6, bar_y))
 
 
 def _outside_tip(rect: QRectF) -> QPointF:
-    return QPointF(rect.right() + 2.4, rect.top() - 2.6)
+    return QPointF(rect.right() + 1.5, rect.top() - 2.0)
 
 
 def _draw_open_project(painter: QPainter) -> None:
@@ -112,6 +118,15 @@ def _draw_stop_export(painter: QPainter) -> None:
 
 
 def _draw_arc_arrow(painter: QPainter, tail: QPointF, tip: QPointF, sweep_deg: float) -> None:
+    geometry = _arrow_geometry(tail, tip, sweep_deg)
+    painter.save()
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
+    _stroke_arrow(painter, geometry, _ARROW_WIDTH + _ARROW_GAP * 2, _ARROW_GAP)
+    painter.restore()
+    _stroke_arrow(painter, geometry, _ARROW_WIDTH, 0.0)
+
+
+def _arrow_geometry(tail: QPointF, tip: QPointF, sweep_deg: float) -> dict:
     chord_x = tip.x() - tail.x()
     chord_y = tip.y() - tail.y()
     distance = math.hypot(chord_x, chord_y)
@@ -137,22 +152,62 @@ def _draw_arc_arrow(painter: QPainter, tail: QPointF, tip: QPointF, sweep_deg: f
     if abs(sweep_deg) <= head_deg + 20:
         raise RuntimeError("arrow head leaves no visible arc")
     span_deg = sweep_deg - head_deg if sweep_deg > 0 else sweep_deg + head_deg
-    rect = QRectF(center_x - radius, center_y - radius, radius * 2, radius * 2)
-    painter.drawArc(rect, int(round(start_deg * 16)), int(round(span_deg * 16)))
     end_rad = math.radians(start_deg + sweep_deg)
     tangent_x = -math.sin(end_rad)
     tangent_y = -math.cos(end_rad)
     if sweep_deg < 0:
         tangent_x = -tangent_x
         tangent_y = -tangent_y
-    _draw_arrow_head(painter, tip, tangent_x, tangent_y)
+    return {
+        "center_x": center_x,
+        "center_y": center_y,
+        "radius": radius,
+        "start_deg": start_deg,
+        "span_deg": span_deg,
+        "tip": tip,
+        "tangent_x": tangent_x,
+        "tangent_y": tangent_y,
+    }
 
 
-def _draw_arrow_head(painter: QPainter, tip: QPointF, unit_x: float, unit_y: float) -> None:
+def _stroke_arrow(painter: QPainter, geometry: dict, width: float, head_extra: float) -> None:
+    _apply_pen(painter, width, ICON_COLOR)
+    rect = QRectF(
+        geometry["center_x"] - geometry["radius"],
+        geometry["center_y"] - geometry["radius"],
+        geometry["radius"] * 2,
+        geometry["radius"] * 2,
+    )
+    painter.drawArc(
+        rect,
+        int(round(geometry["start_deg"] * 16)),
+        int(round(geometry["span_deg"] * 16)),
+    )
+    tip = geometry["tip"]
+    tangent_x = geometry["tangent_x"]
+    tangent_y = geometry["tangent_y"]
+    grown_tip = QPointF(tip.x() + tangent_x * head_extra, tip.y() + tangent_y * head_extra)
+    _draw_arrow_head(
+        painter,
+        grown_tip,
+        tangent_x,
+        tangent_y,
+        _HEAD_LENGTH + head_extra * 2,
+        _HEAD_HALF + head_extra,
+    )
+
+
+def _draw_arrow_head(
+    painter: QPainter,
+    tip: QPointF,
+    unit_x: float,
+    unit_y: float,
+    length: float,
+    half: float,
+) -> None:
     side_x = -unit_y
     side_y = unit_x
-    base = QPointF(tip.x() - unit_x * _HEAD_LENGTH, tip.y() - unit_y * _HEAD_LENGTH)
-    half = 2.7
+    base = QPointF(tip.x() - unit_x * length, tip.y() - unit_y * length)
     left = QPointF(base.x() + side_x * half, base.y() + side_y * half)
     right = QPointF(base.x() - side_x * half, base.y() - side_y * half)
     path = QPainterPath()
@@ -165,3 +220,12 @@ def _draw_arrow_head(painter: QPainter, tip: QPointF, unit_x: float, unit_y: flo
     painter.setBrush(ICON_COLOR)
     painter.drawPath(path)
     painter.restore()
+
+
+def _apply_pen(painter: QPainter, width: float, color: QColor) -> None:
+    pen = QPen(color)
+    pen.setWidthF(width)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)

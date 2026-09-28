@@ -32,7 +32,7 @@ def _icon_button(icon: QIcon, tooltip: str, object_name: str) -> QPushButton:
     button = QPushButton()
     button.setObjectName(object_name)
     button.setIcon(icon)
-    button.setIconSize(QSize(_ICON_BUTTON_SIZE - 8, _ICON_BUTTON_SIZE - 8))
+    button.setIconSize(QSize(_ICON_BUTTON_SIZE - 4, _ICON_BUTTON_SIZE - 4))
     button.setFixedSize(_ICON_BUTTON_SIZE, _ICON_BUTTON_SIZE)
     button.setToolTip(tooltip)
     return button

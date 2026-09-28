@@ -31,6 +31,35 @@ def _signature(image: QImage) -> tuple[int, ...]:
     return tuple(values)
 
 
+def _centroid(image: QImage) -> tuple[float, float]:
+    total = 0
+    sum_x = 0
+    sum_y = 0
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixelColor(x, y).alpha() <= 80:
+                continue
+            sum_x += x
+            sum_y += y
+            total += 1
+    if total == 0:
+        raise RuntimeError("icon has no ink")
+    return sum_x / total, sum_y / total
+
+
+def _ink(image: QImage, x: int, y: int) -> int:
+    count = 0
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            px = x + dx
+            py = y + dy
+            if px < 0 or py < 0 or px >= image.width() or py >= image.height():
+                continue
+            if image.pixelColor(px, py).alpha() > 80:
+                count += 1
+    return count
+
+
 def test_toolbar_icons_share_one_stroke_style(qapp):
     opened = _image(open_project_icon())
     saved = _image(save_project_icon())
@@ -40,19 +69,23 @@ def test_toolbar_icons_share_one_stroke_style(qapp):
     assert _signature(opened) != _signature(exported)
     assert _signature(saved) != _signature(exported)
     assert _signature(settings) != _signature(exported)
-    assert _opaque(opened, 11, 22)
-    assert _opaque(opened, 8, 17)
-    assert _opaque(opened, 17, 10)
-    assert _opaque(saved, 10, 19)
-    assert _opaque(saved, 10, 16)
-    assert _opaque(saved, 17, 8)
-    assert _opaque(saved, 30, 2) is False
+    for image in (opened, saved, exported):
+        center_x, center_y = _centroid(image)
+        assert abs(center_x - 16) < 3
+        assert abs(center_y - 16) < 3
+    assert _opaque(opened, 16, 22)
+    assert _opaque(opened, 20, 6)
+    assert _ink(opened, 18, 8) >= 8
+    assert _opaque(saved, 16, 22)
+    assert _opaque(saved, 21, 4)
+    assert _ink(saved, 16, 12) >= 8
+    assert _opaque(saved, 30, 1) is False
     assert _opaque(settings, 16, 6)
     assert settings.pixelColor(16, 16).alpha() < 20
-    assert _opaque(exported, 8, 20)
-    assert _opaque(exported, 10, 19)
-    assert _opaque(exported, 17, 8)
-    assert _opaque(exported, 30, 2) is False
+    assert _opaque(exported, 16, 22)
+    assert _opaque(exported, 21, 4)
+    assert _ink(exported, 16, 12) >= 8
+    assert _opaque(exported, 30, 1) is False
     stopped = _image(stop_export_icon())
     assert _signature(stopped) != _signature(exported)
     assert stopped.pixelColor(16, 16).alpha() > 200
