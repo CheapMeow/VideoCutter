@@ -94,9 +94,15 @@ def _ink_pixels(draw) -> set[tuple[int, int]]:
 def test_inward_arrow_reverses_the_outward_arrow_ends(qapp):
     geometry = _shared_arrow_geometry()
     layout = _inward_layout(geometry)
-    base = math.radians(layout["base_angle"])
-    assert abs(layout["axis_x"] - (-math.sin(base))) < 1e-6
-    assert abs(layout["axis_y"] - (-math.cos(base))) < 1e-6
+    center = geometry["inward_junction"]
+    assert math.hypot(layout["tip"].x() - center.x(), layout["tip"].y() - center.y()) < 1e-4
+    assert abs(layout["arc_span"] - geometry["shaft_span"]) < 1e-9
+    assert abs(layout["radius"] - geometry["radius"]) < 1e-9
+    start = math.radians(layout["arc_start"])
+    travel_x = math.sin(start) if layout["arc_span"] < 0 else -math.sin(start)
+    travel_y = math.cos(start) if layout["arc_span"] < 0 else -math.cos(start)
+    assert abs(layout["axis_x"] + travel_x) < 1e-4
+    assert abs(layout["axis_y"] + travel_y) < 1e-4
     outward_tip_x = geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH
     outward_tip_y = geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH
     assert math.hypot(layout["tail"].x() - outward_tip_x, layout["tail"].y() - outward_tip_y) < 1e-4

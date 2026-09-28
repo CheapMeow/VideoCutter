@@ -144,31 +144,107 @@ def _draw_inward_arrow(painter: QPainter) -> None:
     layout = _inward_layout(geometry)
     painter.save()
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-    _stroke_inward_line(painter, geometry, layout, _ARROW_WIDTH + _ARROW_GAP * 2)
+    _stroke_inward_line(painter, layout, _ARROW_WIDTH + _ARROW_GAP * 2)
     _stroke_inward_head(painter, layout, _ARROW_GAP)
     painter.restore()
-    _stroke_inward_line(painter, geometry, layout, _ARROW_WIDTH)
+    _stroke_inward_line(painter, layout, _ARROW_WIDTH)
     _stroke_inward_head(painter, layout, 0.0)
 
 
 def _inward_layout(geometry: dict) -> dict:
-    head_deg = math.degrees(_HEAD_LENGTH / geometry["radius"])
-    base_angle = round((geometry["shaft_start"] - head_deg) * 16) / 16
-    shaft_end = geometry["shaft_start"] + geometry["shaft_span"]
-    base = _circle_point(geometry["center_x"], geometry["center_y"], geometry["radius"], base_angle)
-    axis_x, axis_y = _sweep_tangent(base_angle, _ARROW_SWEEP)
+    radius = geometry["radius"]
+    sweep = geometry["shaft_span"]
+    disk = geometry["inward_junction"]
+    tail = QPointF(
+        geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH,
+        geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH,
+    )
+    circle = _match_inward_circle(disk.x(), disk.y(), tail.x(), tail.y(), radius, sweep)
+    base = QPointF(circle["base_x"], circle["base_y"])
     return {
-        "base_angle": base_angle,
-        "arc_span": shaft_end - base_angle,
+        "center_x": circle["center_x"],
+        "center_y": circle["center_y"],
+        "radius": radius,
+        "arc_start": circle["start"],
+        "arc_span": sweep,
         "base": base,
-        "tip": QPointF(base.x() + axis_x * _HEAD_LENGTH, base.y() + axis_y * _HEAD_LENGTH),
+        "tip": disk,
+        "axis_x": circle["axis_x"],
+        "axis_y": circle["axis_y"],
+        "axis_length": _HEAD_LENGTH,
+        "tail": tail,
+    }
+
+
+def _match_inward_circle(
+    disk_x: float,
+    disk_y: float,
+    tail_x: float,
+    tail_y: float,
+    radius: float,
+    sweep: float,
+) -> dict:
+    best = None
+    for side in (-1, 1):
+        for step in range(720):
+            found = _inward_circle_at(disk_x, disk_y, radius, sweep, side, math.radians(step * 0.5))
+            if found is None:
+                continue
+            miss = math.hypot(found["end_x"] - tail_x, found["end_y"] - tail_y)
+            if best is None or miss < best[0]:
+                best = (miss, found)
+    if best is None:
+        raise RuntimeError("inward arrow arc has no tangent toward the disk center")
+    center_phi = math.atan2(best[1]["axis_y"], best[1]["axis_x"])
+    side = best[1]["side"]
+    for step in range(-250, 251):
+        found = _inward_circle_at(disk_x, disk_y, radius, sweep, side, center_phi + math.radians(step * 0.002))
+        if found is None:
+            continue
+        miss = math.hypot(found["end_x"] - tail_x, found["end_y"] - tail_y)
+        if miss < best[0]:
+            best = (miss, found)
+    if best[0] > 0.15:
+        raise RuntimeError("inward arrow arc does not reach the outward tip")
+    return best[1]
+
+
+def _inward_circle_at(
+    disk_x: float,
+    disk_y: float,
+    radius: float,
+    sweep: float,
+    side: int,
+    phi: float,
+) -> dict | None:
+    axis_x = math.cos(phi)
+    axis_y = math.sin(phi)
+    base_x = disk_x - axis_x * _HEAD_LENGTH
+    base_y = disk_y - axis_y * _HEAD_LENGTH
+    center_x = base_x + (-axis_y * side) * radius
+    center_y = base_y + (axis_x * side) * radius
+    start = math.degrees(math.atan2(center_y - base_y, base_x - center_x))
+    start_rad = math.radians(start)
+    if sweep < 0:
+        travel_x = math.sin(start_rad)
+        travel_y = math.cos(start_rad)
+    else:
+        travel_x = -math.sin(start_rad)
+        travel_y = -math.cos(start_rad)
+    if travel_x * axis_x + travel_y * axis_y > -0.95:
+        return None
+    end = _circle_point(center_x, center_y, radius, start + sweep)
+    return {
+        "side": side,
         "axis_x": axis_x,
         "axis_y": axis_y,
-        "axis_length": _HEAD_LENGTH,
-        "tail": QPointF(
-            geometry["outward_junction"].x() + geometry["outward_tangent_x"] * _HEAD_LENGTH,
-            geometry["outward_junction"].y() + geometry["outward_tangent_y"] * _HEAD_LENGTH,
-        ),
+        "base_x": base_x,
+        "base_y": base_y,
+        "center_x": center_x,
+        "center_y": center_y,
+        "start": start,
+        "end_x": end.x(),
+        "end_y": end.y(),
     }
 
 
@@ -253,21 +329,21 @@ def _stroke_shaft(painter: QPainter, geometry: dict, width: float) -> None:
     )
 
 
-def _stroke_inward_line(painter: QPainter, geometry: dict, layout: dict, width: float) -> None:
-    arc = dict(geometry)
-    arc["shaft_start"] = layout["base_angle"]
-    arc["shaft_span"] = layout["arc_span"]
-    _stroke_shaft(painter, arc, width)
-    junction = geometry["outward_junction"]
-    tangent_x = geometry["outward_tangent_x"]
-    tangent_y = geometry["outward_tangent_y"]
+def _stroke_inward_line(painter: QPainter, layout: dict, width: float) -> None:
     _apply_pen(painter, width, ICON_COLOR)
     pen = painter.pen()
     pen.setCapStyle(Qt.PenCapStyle.FlatCap)
     painter.setPen(pen)
-    painter.drawLine(
-        QPointF(junction.x() - tangent_x * _HEAD_OVERLAP, junction.y() - tangent_y * _HEAD_OVERLAP),
-        layout["tail"],
+    rect = QRectF(
+        layout["center_x"] - layout["radius"],
+        layout["center_y"] - layout["radius"],
+        layout["radius"] * 2,
+        layout["radius"] * 2,
+    )
+    painter.drawArc(
+        rect,
+        int(round(layout["arc_start"] * 16)),
+        int(round(layout["arc_span"] * 16)),
     )
 
 
