@@ -41,15 +41,18 @@ def test_toolbar_icons_share_one_stroke_style(qapp):
     assert _signature(saved) != _signature(exported)
     assert _signature(settings) != _signature(exported)
     assert _opaque(opened, 11, 22)
-    assert _opaque(opened, 6, 18)
-    assert _opaque(opened, 18, 8)
-    assert _opaque(saved, 11, 22)
-    assert _opaque(saved, 24, 7)
+    assert _opaque(opened, 8, 17)
+    assert _opaque(opened, 17, 10)
+    assert _opaque(saved, 10, 19)
+    assert _opaque(saved, 10, 16)
+    assert _opaque(saved, 17, 8)
+    assert _opaque(saved, 30, 2) is False
     assert _opaque(settings, 16, 6)
     assert settings.pixelColor(16, 16).alpha() < 20
     assert _opaque(exported, 8, 20)
-    assert _opaque(exported, 10, 18)
-    assert _opaque(exported, 24, 6)
+    assert _opaque(exported, 10, 19)
+    assert _opaque(exported, 17, 8)
+    assert _opaque(exported, 30, 2) is False
     stopped = _image(stop_export_icon())
     assert _signature(stopped) != _signature(exported)
     assert stopped.pixelColor(16, 16).alpha() > 200
