@@ -1,7 +1,7 @@
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPainterPathStroker, QPen, QPixmap
 
 
 ICON_COLOR = QColor("#e6e6e6")
@@ -348,15 +348,31 @@ def _stroke_inward_line(painter: QPainter, layout: dict, width: float) -> None:
 
 
 def _stroke_inward_head(painter: QPainter, layout: dict, head_extra: float) -> None:
-    _draw_arrow_head(
-        painter,
+    path = _arrow_head_path(
         layout["base"],
         layout["axis_x"],
         layout["axis_y"],
-        layout["axis_length"] + head_extra,
-        _HEAD_HALF + head_extra,
-        _HEAD_OVERLAP + head_extra,
+        layout["axis_length"],
+        _HEAD_HALF,
+        _HEAD_OVERLAP,
     )
+    if head_extra > 0:
+        path = _dilate_path(path, head_extra)
+    painter.save()
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(ICON_COLOR)
+    painter.drawPath(path)
+    painter.restore()
+
+
+def _dilate_path(path: QPainterPath, radius: float) -> QPainterPath:
+    stroker = QPainterPathStroker()
+    stroker.setWidth(radius * 2)
+    stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
+    stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    dilated = path.united(stroker.createStroke(path))
+    dilated.setFillRule(Qt.FillRule.WindingFill)
+    return dilated
 
 
 def _stroke_head(
@@ -377,15 +393,14 @@ def _stroke_head(
     )
 
 
-def _draw_arrow_head(
-    painter: QPainter,
+def _arrow_head_path(
     junction: QPointF,
     unit_x: float,
     unit_y: float,
     length: float,
     half: float,
     back: float,
-) -> None:
+) -> QPainterPath:
     side_x = -unit_y
     side_y = unit_x
     base = QPointF(junction.x() - unit_x * back, junction.y() - unit_y * back)
@@ -397,10 +412,22 @@ def _draw_arrow_head(
     path.lineTo(left)
     path.lineTo(right)
     path.closeSubpath()
+    return path
+
+
+def _draw_arrow_head(
+    painter: QPainter,
+    junction: QPointF,
+    unit_x: float,
+    unit_y: float,
+    length: float,
+    half: float,
+    back: float,
+) -> None:
     painter.save()
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(ICON_COLOR)
-    painter.drawPath(path)
+    painter.drawPath(_arrow_head_path(junction, unit_x, unit_y, length, half, back))
     painter.restore()
 
 

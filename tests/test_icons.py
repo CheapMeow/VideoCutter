@@ -1,9 +1,15 @@
 import math
 
+from PySide6.QtCore import QPointF
 from PySide6.QtGui import QImage
 
 from videocutter.icons import (
+    _ARROW_GAP,
+    _HEAD_HALF,
     _HEAD_LENGTH,
+    _HEAD_OVERLAP,
+    _arrow_head_path,
+    _dilate_path,
     _draw_arc_arrow,
     _inward_layout,
     _paint,
@@ -113,6 +119,49 @@ def test_inward_arrow_reverses_the_outward_arrow_ends(qapp):
     assert _near_ink(outward, outward_tip_x, outward_tip_y)
     assert inward - outward
     assert outward - inward
+
+
+def test_inward_mask_uses_the_same_expansion_radius(qapp):
+    geometry = _shared_arrow_geometry()
+    layout = _inward_layout(geometry)
+    mask = _dilate_path(
+        _arrow_head_path(
+            layout["base"],
+            layout["axis_x"],
+            layout["axis_y"],
+            layout["axis_length"],
+            _HEAD_HALF,
+            _HEAD_OVERLAP,
+        ),
+        _ARROW_GAP,
+    )
+    axis_x = layout["axis_x"]
+    axis_y = layout["axis_y"]
+    side_x = -axis_y
+    side_y = axis_x
+    tip = layout["tip"]
+    left_x = layout["base"].x() - axis_x * _HEAD_OVERLAP + side_x * _HEAD_HALF
+    left_y = layout["base"].y() - axis_y * _HEAD_OVERLAP + side_y * _HEAD_HALF
+    mid_x = (tip.x() + left_x) / 2
+    mid_y = (tip.y() + left_y) / 2
+    edge_x = left_x - tip.x()
+    edge_y = left_y - tip.y()
+    normal_x = -edge_y
+    normal_y = edge_x
+    if normal_x * side_x + normal_y * side_y < 0:
+        normal_x = -normal_x
+        normal_y = -normal_y
+    normal_length = math.hypot(normal_x, normal_y)
+    normal_x /= normal_length
+    normal_y /= normal_length
+    inside = QPointF(mid_x + normal_x * _ARROW_GAP * 0.5, mid_y + normal_y * _ARROW_GAP * 0.5)
+    outside = QPointF(mid_x + normal_x * _ARROW_GAP * 1.35, mid_y + normal_y * _ARROW_GAP * 1.35)
+    assert mask.contains(inside)
+    assert mask.contains(outside) is False
+    past_tip = QPointF(tip.x() + axis_x * _ARROW_GAP * 0.5, tip.y() + axis_y * _ARROW_GAP * 0.5)
+    beyond_tip = QPointF(tip.x() + axis_x * _ARROW_GAP * 1.35, tip.y() + axis_y * _ARROW_GAP * 1.35)
+    assert mask.contains(past_tip)
+    assert mask.contains(beyond_tip) is False
 
 
 def test_arrowhead_base_is_perpendicular_to_the_arc(qapp):
