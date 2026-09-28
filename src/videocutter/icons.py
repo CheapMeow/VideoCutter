@@ -10,8 +10,8 @@ _SYMBOL_STROKE = 2.3
 _ARROW_WIDTH = 3.5
 _ARROW_GAP = 1.9
 _ARROW_SWEEP = 118.0
-_HEAD_LENGTH = 6.4
-_HEAD_HALF = 3.8
+_HEAD_LENGTH = 3.4
+_HEAD_HALF = 3.6
 
 
 def open_project_icon() -> QIcon:
@@ -70,12 +70,12 @@ def _outside_tip(rect: QRectF) -> QPointF:
 
 def _draw_open_project(painter: QPainter) -> None:
     _draw_disk(painter)
-    _draw_arc_arrow(painter, _outside_tip(_SYMBOL), _SYMBOL.center(), _ARROW_SWEEP)
+    _draw_arc_arrow(painter, inward=True)
 
 
 def _draw_save_project(painter: QPainter) -> None:
     _draw_disk(painter)
-    _draw_arc_arrow(painter, _SYMBOL.center(), _outside_tip(_SYMBOL), -_ARROW_SWEEP)
+    _draw_arc_arrow(painter, inward=False)
 
 
 def _draw_settings(painter: QPainter) -> None:
@@ -106,7 +106,7 @@ def _draw_settings(painter: QPainter) -> None:
 
 def _draw_export(painter: QPainter) -> None:
     _draw_window(painter)
-    _draw_arc_arrow(painter, _SYMBOL.center(), _outside_tip(_SYMBOL), -_ARROW_SWEEP)
+    _draw_arc_arrow(painter, inward=False)
 
 
 def _draw_stop_export(painter: QPainter) -> None:
@@ -117,16 +117,31 @@ def _draw_stop_export(painter: QPainter) -> None:
     painter.restore()
 
 
-def _draw_arc_arrow(painter: QPainter, tail: QPointF, tip: QPointF, sweep_deg: float) -> None:
-    geometry = _arrow_geometry(tail, tip, sweep_deg)
+def _draw_arc_arrow(painter: QPainter, inward: bool) -> None:
+    geometry = _shared_arrow_geometry()
+    if inward:
+        head_tip = geometry["tail"]
+        tangent_x = geometry["inward_tangent_x"]
+        tangent_y = geometry["inward_tangent_y"]
+    else:
+        head_tip = geometry["tip"]
+        tangent_x = geometry["outward_tangent_x"]
+        tangent_y = geometry["outward_tangent_y"]
     painter.save()
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
-    _stroke_arrow(painter, geometry, _ARROW_WIDTH + _ARROW_GAP * 2, _ARROW_GAP)
+    _stroke_shaft(painter, geometry, _ARROW_WIDTH + _ARROW_GAP * 2)
+    _stroke_head(painter, head_tip, tangent_x, tangent_y, _ARROW_GAP)
     painter.restore()
-    _stroke_arrow(painter, geometry, _ARROW_WIDTH, 0.0)
+    _stroke_shaft(painter, geometry, _ARROW_WIDTH)
+    if inward:
+        _erase_head_cap(painter, head_tip, _ARROW_WIDTH)
+    _stroke_head(painter, head_tip, tangent_x, tangent_y, 0.0)
 
 
-def _arrow_geometry(tail: QPointF, tip: QPointF, sweep_deg: float) -> dict:
+def _shared_arrow_geometry() -> dict:
+    tail = _SYMBOL.center()
+    tip = _outside_tip(_SYMBOL)
+    sweep_deg = -_ARROW_SWEEP
     chord_x = tip.x() - tail.x()
     chord_y = tip.y() - tail.y()
     distance = math.hypot(chord_x, chord_y)
@@ -149,29 +164,42 @@ def _arrow_geometry(tail: QPointF, tip: QPointF, sweep_deg: float) -> dict:
     center_y = mid_y + left_y * center_offset
     start_deg = math.degrees(math.atan2(center_y - tail.y(), tail.x() - center_x))
     head_deg = math.degrees(_HEAD_LENGTH / radius)
-    if abs(sweep_deg) <= head_deg + 20:
+    if abs(sweep_deg) <= head_deg + 24:
         raise RuntimeError("arrow head leaves no visible arc")
-    span_deg = sweep_deg - head_deg if sweep_deg > 0 else sweep_deg + head_deg
-    end_rad = math.radians(start_deg + sweep_deg)
-    tangent_x = -math.sin(end_rad)
-    tangent_y = -math.cos(end_rad)
-    if sweep_deg < 0:
-        tangent_x = -tangent_x
-        tangent_y = -tangent_y
+    shaft_start = start_deg
+    shaft_span = sweep_deg + head_deg
+    outward_tangent_x, outward_tangent_y = _sweep_tangent(start_deg + sweep_deg, sweep_deg)
+    inward_tangent_x, inward_tangent_y = _sweep_tangent(start_deg, -sweep_deg)
     return {
         "center_x": center_x,
         "center_y": center_y,
         "radius": radius,
-        "start_deg": start_deg,
-        "span_deg": span_deg,
+        "shaft_start": shaft_start,
+        "shaft_span": shaft_span,
+        "tail": tail,
         "tip": tip,
-        "tangent_x": tangent_x,
-        "tangent_y": tangent_y,
+        "outward_tangent_x": outward_tangent_x,
+        "outward_tangent_y": outward_tangent_y,
+        "inward_tangent_x": inward_tangent_x,
+        "inward_tangent_y": inward_tangent_y,
     }
 
 
-def _stroke_arrow(painter: QPainter, geometry: dict, width: float, head_extra: float) -> None:
+def _sweep_tangent(angle_deg: float, sweep_deg: float) -> tuple[float, float]:
+    rad = math.radians(angle_deg)
+    tangent_x = -math.sin(rad)
+    tangent_y = -math.cos(rad)
+    if sweep_deg < 0:
+        tangent_x = -tangent_x
+        tangent_y = -tangent_y
+    return tangent_x, tangent_y
+
+
+def _stroke_shaft(painter: QPainter, geometry: dict, width: float) -> None:
     _apply_pen(painter, width, ICON_COLOR)
+    pen = painter.pen()
+    pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+    painter.setPen(pen)
     rect = QRectF(
         geometry["center_x"] - geometry["radius"],
         geometry["center_y"] - geometry["radius"],
@@ -180,12 +208,28 @@ def _stroke_arrow(painter: QPainter, geometry: dict, width: float, head_extra: f
     )
     painter.drawArc(
         rect,
-        int(round(geometry["start_deg"] * 16)),
-        int(round(geometry["span_deg"] * 16)),
+        int(round(geometry["shaft_start"] * 16)),
+        int(round(geometry["shaft_span"] * 16)),
     )
-    tip = geometry["tip"]
-    tangent_x = geometry["tangent_x"]
-    tangent_y = geometry["tangent_y"]
+
+
+def _erase_head_cap(painter: QPainter, tip: QPointF, width: float) -> None:
+    painter.save()
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationOut)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(ICON_COLOR)
+    radius = width / 2
+    painter.drawEllipse(QRectF(tip.x() - radius, tip.y() - radius, width, width))
+    painter.restore()
+
+
+def _stroke_head(
+    painter: QPainter,
+    tip: QPointF,
+    tangent_x: float,
+    tangent_y: float,
+    head_extra: float,
+) -> None:
     grown_tip = QPointF(tip.x() + tangent_x * head_extra, tip.y() + tangent_y * head_extra)
     _draw_arrow_head(
         painter,

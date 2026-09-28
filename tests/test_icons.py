@@ -1,6 +1,14 @@
 from PySide6.QtGui import QImage
 
-from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon, stop_export_icon
+from videocutter.icons import (
+    _draw_arc_arrow,
+    _paint,
+    export_icon,
+    open_project_icon,
+    save_project_icon,
+    settings_icon,
+    stop_export_icon,
+)
 
 
 def _image(icon) -> QImage:
@@ -58,6 +66,24 @@ def _ink(image: QImage, x: int, y: int) -> int:
             if image.pixelColor(px, py).alpha() > 80:
                 count += 1
     return count
+
+
+def test_open_and_save_arrows_follow_the_same_arc(qapp):
+    def ink(inward: bool) -> set[tuple[int, int]]:
+        image = _paint(lambda painter: _draw_arc_arrow(painter, inward=inward)).toImage()
+        step = int(image.devicePixelRatio())
+        pixels = set()
+        for y in range(0, image.height(), step):
+            for x in range(0, image.width(), step):
+                if image.pixelColor(x, y).alpha() > 80:
+                    pixels.add((x // step, y // step))
+        return pixels
+
+    outward = ink(False)
+    inward = ink(True)
+    shared = outward & inward
+    assert len(shared) > len(outward - inward)
+    assert len(shared) > len(inward - outward)
 
 
 def test_toolbar_icons_share_one_stroke_style(qapp):
