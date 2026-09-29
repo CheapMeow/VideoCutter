@@ -297,6 +297,9 @@ class MainWindow(QMainWindow):
                 self._export_should_stop,
                 self.output_settings,
             )
+        except Exception as error:
+            self.show_status(f"输出视频失败：{error}")
+            return
         finally:
             self._exporting = False
             self.source_panel.set_exporting(False)

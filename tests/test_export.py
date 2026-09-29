@@ -1,3 +1,5 @@
+import math
+from fractions import Fraction
 from pathlib import Path
 
 import av
@@ -15,7 +17,7 @@ from videocutter.export import (
 )
 from videocutter.output_settings import RATE_MAX, RATE_MIN, RATE_SPECIFIED, OutputSettings
 from videocutter.media import open_capture, probe_video, read_frame
-from videocutter.model import MediaItem, Segment, TimelineDocument, new_id
+from videocutter.model import TIME_EPSILON, MediaItem, Segment, TimelineDocument, new_id
 
 
 def add_video(
@@ -121,6 +123,92 @@ def write_gray_h264(path: Path, frame_count: int, fps: int, step: int) -> None:
     for packet in stream.encode():
         container.mux(packet)
     container.close()
+
+
+def write_variable_rate_h264(path: Path, pts_list: list[int]) -> None:
+    container = av.open(str(path), mode="w")
+    stream = container.add_stream("libx264", rate=30)
+    stream.width = 160
+    stream.height = 90
+    stream.pix_fmt = "yuv420p"
+    stream.time_base = Fraction(1, 30000)
+    stream.codec_context.time_base = Fraction(1, 30000)
+    stream.options = {"g": "1", "crf": "0"}
+    for index, pts in enumerate(pts_list):
+        image = np.full((90, 160, 3), index * 16, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(image, format="bgr24")
+        frame.pts = pts
+        frame.time_base = stream.time_base
+        for packet in stream.encode(frame):
+            container.mux(packet)
+    for packet in stream.encode():
+        container.mux(packet)
+    container.close()
+
+
+def test_variable_frame_times_pick_the_frame_displayed_at_that_time(tmp_path):
+    pts_list = [0, 500, 1000, 1500, 2000, 2500, 3000, 4500, 6500, 9000]
+    source = tmp_path / "vfr.mp4"
+    write_variable_rate_h264(source, pts_list)
+    probed = probe_video(str(source))
+    item = MediaItem(
+        media_id=new_id(),
+        path=str(source),
+        duration_sec=float(probed["duration_sec"]),
+        fps=float(probed["fps"]),
+        frame_count=int(probed["frame_count"]),
+        width=int(probed["width"]),
+        height=int(probed["height"]),
+        bitrate_kbps=float(probed["bitrate_kbps"]),
+    )
+    mapped = [int(round(pts / 30000 * item.fps)) for pts in pts_list]
+    assert any(index not in mapped for index in range(max(mapped) + 1))
+    document = TimelineDocument()
+    document.add_media(item)
+    document.tracks = [[Segment(new_id(), item.media_id, 0.0, 0.0, item.duration_sec)]]
+    document.reference_media_id = item.media_id
+    output = tmp_path / "out.mp4"
+    assert export_timeline(
+        document,
+        str(output),
+        lambda _written, _total: None,
+        lambda: False,
+        OutputSettings(),
+    )
+    output_count = int(math.floor(item.duration_sec * item.fps + TIME_EPSILON))
+    expected = []
+    for index in range(output_count):
+        target = int(math.floor(index / item.fps * 30000 + 1e-6))
+        value = None
+        for pts, sample in zip(pts_list, range(len(pts_list))):
+            if pts <= target:
+                value = sample * 16
+        if value is None:
+            raise RuntimeError(f"no source frame at output index {index}")
+        expected.append(value)
+    container = av.open(str(output))
+    actual = [float(frame.to_ndarray(format="bgr24")[45, 80].mean()) for frame in container.decode(video=0)]
+    container.close()
+    assert len(actual) == output_count
+    np.testing.assert_allclose(actual, expected, atol=5)
+
+
+def test_failed_export_removes_the_partial_file(tmp_path):
+    document = TimelineDocument()
+    wide = add_video(document, tmp_path / "wide.avi", 0, (160, 90), frame_count=4)
+    narrow = add_video(document, tmp_path / "narrow.avi", 0, (80, 60), frame_count=4)
+    document.reference_media_id = wide.media_id
+    document.tracks = [[Segment(new_id(), narrow.media_id, 0.0, 0.0, narrow.duration_sec)]]
+    output = tmp_path / "out.mp4"
+    with pytest.raises(RuntimeError, match="frame size"):
+        export_timeline(
+            document,
+            str(output),
+            lambda _written, _total: None,
+            lambda: False,
+            OutputSettings(),
+        )
+    assert not output.exists()
 
 
 def test_sequential_decode_picks_the_same_frames_as_seeking(tmp_path):

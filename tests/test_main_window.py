@@ -15,6 +15,7 @@ from videocutter.geometry import TRACK_HEIGHT, row_top
 from videocutter.main_window import MainWindow, format_export_progress, format_export_result
 from videocutter.output_settings_dialog import OutputSettingsDialog
 from videocutter.media import MEDIA_MIME
+from videocutter.model import Segment, new_id
 from videocutter.project import project_output_path
 from videocutter.source_panel import remove_mark_rect
 
@@ -403,6 +404,32 @@ def test_stop_button_cancels_the_export_and_keeps_the_window(qapp, tmp_path):
     assert window.preview.isEnabled()
     assert window.timeline.isEnabled()
     assert window.statusBar().currentMessage() == "已终止导出"
+    window.close()
+
+
+def test_failed_export_reports_the_error_and_removes_the_file(qapp, tmp_path):
+    first_path = tmp_path / "first.avi"
+    second_path = tmp_path / "second.avi"
+    write_color_video(first_path, frame_count=4, fps=10, size=(160, 90))
+    write_color_video(second_path, frame_count=4, fps=10, size=(80, 60))
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(first_path), str(second_path)])
+    first_id = _media_id(window, first_path)
+    second_id = _media_id(window, second_path)
+    assert _drop_media(window, first_id, row_top(0) + TRACK_HEIGHT / 2)
+    second = window.document.media[second_id]
+    window.document.tracks = [[Segment(new_id(), second_id, 0.0, 0.0, second.duration_sec)]]
+    output = tmp_path / "exported.mp4"
+    window._export_to_path(str(output))
+    assert not output.exists()
+    assert window.statusBar().currentMessage().startswith("输出视频失败：frame size 80x60")
+    assert window.source_panel.export_button.toolTip() == "导出"
+    assert window.source_panel.export_button.isEnabled()
+    assert window.preview.isEnabled()
+    assert window.timeline.isEnabled()
     window.close()
 
 
