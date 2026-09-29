@@ -8,3 +8,4 @@ dist/
 *.spec
 local/
 benchmarks/output/
+.agents/
