@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from tests.support import write_color_video
-from videocutter.media import probe_video
+from videocutter.capture import probe_video
 from videocutter.model import MediaItem, TimelineDocument, new_id
 from videocutter.project import load_project, project_output_path, save_project
 

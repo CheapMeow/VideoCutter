@@ -40,13 +40,13 @@ VideoCutter 是一个用 Python 和 Qt 编写的桌面工具，用来裁剪视�
 
 ## 导出速度
 
-导出每一帧时，先按轨道时间找到最上面一条轨道上的素材，再按素材里的显示时间取画面。这一时刻的画面是时间戳不晚于该时刻的最后一帧，见 [src/videocutter/export.py](src/videocutter/export.py:219)。游戏录像的帧间隔不均匀，平均帧率换算出来的帧号会缺号，所以取帧用时间戳。平均帧率只用来决定输出一共有多少帧。
+导出每一帧时，先按轨道时间找到最上面一条轨道上的素材，再按素材里的显示时间取画面。这一时刻的画面是时间戳不晚于该时刻的最后一帧，见 [src/videocutter/export.py](src/videocutter/export.py:183)。游戏录像的帧间隔不均匀，平均帧率换算出来的帧号会缺号，所以取帧用时间戳。平均帧率只用来决定输出一共有多少帧。
 
-顺序解码。优化前每一帧都先定位再读取。OpenCV 这条路径是 24.7 帧每秒，MP4 和 MOV 的整次导出是 21 帧每秒左右。现在每个素材打开一次，解码线程设为 `AUTO`，见 [src/videocutter/export.py](src/videocutter/export.py:204)。下一次要的画面如果还在后面，就继续往下解码。时间往回跳，或者按素材帧率估算向前超过 240 帧，才重新定位到前面的关键帧，阈值在 [src/videocutter/export.py](src/videocutter/export.py:42)，判断在 [src/videocutter/export.py](src/videocutter/export.py:233)。PyAV 多线程、画面保持 YUV 时，解码是 2953.1 帧每秒。同一条解码再转成 BGR，是 329.4 帧每秒。
+顺序解码。优化前每一帧都先定位再读取。OpenCV 这条路径是 24.7 帧每秒，MP4 和 MOV 的整次导出是 21 帧每秒左右。现在每个素材打开一次，解码线程设为 `AUTO`，见 [src/videocutter/export.py](src/videocutter/export.py:168)。下一次要的画面如果还在后面，就继续往下解码。时间往回跳，或者按素材帧率估算向前超过 240 帧，才重新定位到前面的关键帧，阈值在 [src/videocutter/export.py](src/videocutter/export.py:18)，判断在 [src/videocutter/export.py](src/videocutter/export.py:197)。PyAV 多线程、画面保持 YUV 时，解码是 2953.1 帧每秒。同一条解码再转成 BGR，是 329.4 帧每秒。
 
-画面保持 YUV。把 BGR 转成 yuv420p 测得 218.5 帧每秒，整次导出会被这一步限住。MP4、MOV、WebM 使用 yuv420p。解码帧已经是这个格式时，把 Y、U、V 三个平面复制到编码器自己的帧里，见 [src/videocutter/export.py](src/videocutter/export.py:162)。编码器要改写时间戳和帧类型，解码器后面还要复用原来的帧，所以这里复制一份。素材帧上的关键帧标记会清掉，见 [src/videocutter/export.py](src/videocutter/export.py:117)，否则编码器会在素材的关键帧位置再插入关键帧。AVI 使用 MJPEG，像素格式是 yuvj420p，这时才做格式转换。
+画面保持 YUV。把 BGR 转成 yuv420p 测得 218.5 帧每秒，整次导出会被这一步限住。MP4、MOV、WebM 使用 yuv420p。解码帧已经是这个格式时，把 Y、U、V 三个平面复制到编码器自己的帧里，见 [src/videocutter/export.py](src/videocutter/export.py:126)。编码器要改写时间戳和帧类型，解码器后面还要复用原来的帧，所以这里复制一份。素材帧上的关键帧标记会清掉，见 [src/videocutter/export.py](src/videocutter/export.py:81)，否则编码器会在素材的关键帧位置再插入关键帧。AVI 使用 MJPEG，像素格式是 yuvj420p，这时才做格式转换。
 
-MP4 和 MOV 使用 NVIDIA 的 `h264_nvenc`，预设是 `p1`，见 [src/videocutter/export.py](src/videocutter/export.py:46) 和 [src/videocutter/export.py](src/videocutter/export.py:54)。同一段素材上，解码和编码接在一起、画面保持 YUV、码率 12 Mbps：libx264 medium 是 83.9 帧每秒，亮度 PSNR 30.13 dB；`h264_nvenc` p1 是 864.4 帧每秒，PSNR 30.18 dB。p4 是 532.9 帧每秒，p7 是 247.0 帧每秒。p1 速度最高，亮度 PSNR 和 libx264 medium 持平，导出用 p1。AVI 仍用 MJPEG，WebM 仍用 libvpx-vp9。AVI 的提速来自顺序解码和保持 YUV。WebM 的时间几乎都花在 VP9 编码上。
+MP4 和 MOV 使用 NVIDIA 的 `h264_nvenc`，预设是 `p1`，见 [src/videocutter/export.py](src/videocutter/export.py:22) 和 [src/videocutter/export.py](src/videocutter/export.py:30)。同一段素材上，解码和编码接在一起、画面保持 YUV、码率 12 Mbps：libx264 medium 是 83.9 帧每秒，亮度 PSNR 30.13 dB；`h264_nvenc` p1 是 864.4 帧每秒，PSNR 30.18 dB。p4 是 532.9 帧每秒，p7 是 247.0 帧每秒。p1 速度最高，亮度 PSNR 和 libx264 medium 持平，导出用 p1。AVI 仍用 MJPEG，WebM 仍用 libvpx-vp9。AVI 的提速来自顺序解码和保持 YUV。WebM 的时间几乎都花在 VP9 编码上。
 
 CUDA 解码保持 YUV 是 870.4 帧每秒。画面要从显存复制回内存，比 CPU 多线程的 2953.1 帧每秒慢，导出使用 CPU 多线程解码。多进程把素材分段编码时，libx264 medium 可以从 83.9 帧每秒提到 4 个进程的 173.3 帧每秒。`h264_nvenc` 的编码单元在显卡上是固定的，3 个进程、p4 是 434.4 帧每秒，低于单进程 p1 的 864.4 帧每秒，导出在一个进程里编码。
 
@@ -95,6 +95,29 @@ CUDA 解码保持 YUV 是 870.4 帧每秒。画面要从显存复制回内存，
 | 2 个进程分段，保持 YUV | libx264 medium | 131.5 | | |
 | 4 个进程分段，保持 YUV | libx264 medium | 173.3 | | |
 | 3 个进程分段，保持 YUV | h264_nvenc p4 | 434.4 | | |
+
+## 打开速度
+
+打开时间从启动进程开始计算，到主窗口出现并且能够响应窗口消息为止。测速脚本是 [benchmarks/startup_speed.py](benchmarks/startup_speed.py:107)。程序在脚本新建的一个隐藏桌面上启动，窗口不会出现在屏幕上，也不会夺走当前程序的焦点。脚本在同一个隐藏桌面上轮询窗口，见 [benchmarks/startup_speed.py](benchmarks/startup_speed.py:175)。第一次打开是把 `dist\VideoCutter` 复制成新的目录后打开，这时 Windows 还没有读过这些文件，杀毒软件也要扫描每个第一次加载的动态库，相当于构建或者安装之后第一次打开，见 [benchmarks/startup_speed.py](benchmarks/startup_speed.py:233)。再次打开是同一个目录连续打开。在仓库根目录执行，参数是每一项的次数：
+
+```powershell
+.\.venv\Scripts\python.exe -m benchmarks.startup_speed 5
+```
+
+| 打开方式 | 优化前 | 优化后 |
+|---|---|---|
+| 打包程序，第一次打开 | 2.54 秒 | 1.06 秒 |
+| 打包程序，再次打开 | 0.65 秒 | 0.35 秒 |
+
+表中是 5 次的中位数。优化前的数据来自提交 `1485182`。
+
+启动时间主要花在加载动态库上。优化前，窗口出现时进程已经加载了 231 MiB 的动态库，其中 cv2、PyAV 和 numpy 约 170 MiB。现在是 51.8 MiB，几乎只剩 Qt 的 Core、Gui、Widgets 三个库和 Python 自身。做法有三项。
+
+cv2、PyAV 和 numpy 只在打开视频、显示画面和导出时使用。读取视频的函数放在 [src/videocutter/capture.py](src/videocutter/capture.py)，导出放在 [src/videocutter/export.py](src/videocutter/export.py:38)。界面模块在用到它们的函数里才导入这两个模块。导出格式列表和文件后缀的处理不需要这些库，单独放在 [src/videocutter/export_formats.py](src/videocutter/export_formats.py)，导出对话框因此不用加载 PyAV。
+
+窗口出现之后，后台线程预先导入这两个模块，见 [src/videocutter/app.py](src/videocutter/app.py:11)，第一次打开视频和导出时就不用再等。Windows 加载动态库时持有整个进程共用的加载锁，第一次绘制窗口也要加载 Qt 的平台插件和样式插件。后台导入和第一次绘制同时进行时，第一次打开会多出将近 1 秒。所以后台导入在主窗口收到第一次绘制事件之后才开始，见 [src/videocutter/app.py](src/videocutter/app.py:17)。
+
+打包时只收集程序实际用到的模块，见 [scripts/build.ps1](scripts/build.ps1:19)。PyInstaller 收集 PySide6 的全部子模块时会带进 `PySide6.scripts`，这个模块依赖 setuptools。setuptools 的运行时钩子在程序启动时导入 setuptools，Python 开始执行程序之前的时间因此在第一次打开时是 1.4 秒，再次打开时是 250 毫秒。只收集用到的模块之后，这两个时间是 500 毫秒和 130 毫秒，导入 `PySide6.QtWidgets` 从 0.7 秒降到 0.11 秒。打包目录从 629.8 MB 降到 304.8 MB。
 
 ## 运行
 

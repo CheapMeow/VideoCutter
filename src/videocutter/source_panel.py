@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from videocutter.icons import export_icon, open_project_icon, save_project_icon, settings_icon, stop_export_icon
-from videocutter.media import MEDIA_MIME, VIDEO_SUFFIXES, format_duration, probe_video
+from videocutter.media import MEDIA_MIME, VIDEO_SUFFIXES, format_duration
 from videocutter.model import MediaItem, TimelineDocument, new_id
 
 
@@ -284,6 +284,9 @@ class SourcePanel(QWidget):
         suffix = Path(path).suffix.lower()
         if suffix not in VIDEO_SUFFIXES:
             raise RuntimeError(f"unsupported video file: {path}")
+        # cv2 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入
+        from videocutter.capture import probe_video
+
         probed = probe_video(path)
         item = MediaItem(
             media_id=new_id(),

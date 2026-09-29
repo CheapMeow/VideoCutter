@@ -1,7 +1,8 @@
 import numpy as np
 
 from tests.support import write_color_video
-from videocutter.media import format_duration, open_capture, probe_video, read_frame
+from videocutter.capture import open_capture, probe_video, read_frame
+from videocutter.media import format_duration
 
 
 def test_probe_and_read_frames(tmp_path):

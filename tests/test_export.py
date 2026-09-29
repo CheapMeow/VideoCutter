@@ -9,14 +9,14 @@ import pytest
 from tests.support import write_color_video
 import cv2
 
-from videocutter.export import (
+from videocutter.export import export_timeline
+from videocutter.export_formats import (
     default_export_filter,
-    export_timeline,
     fourcc_for_suffix,
     output_path_for_filter,
 )
 from videocutter.output_settings import RATE_MAX, RATE_MIN, RATE_SPECIFIED, OutputSettings
-from videocutter.media import open_capture, probe_video, read_frame
+from videocutter.capture import open_capture, probe_video, read_frame
 from videocutter.model import TIME_EPSILON, MediaItem, Segment, TimelineDocument, new_id
 
 

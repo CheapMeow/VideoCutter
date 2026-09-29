@@ -522,6 +522,24 @@ def test_save_and_open_project_restores_the_timeline(qapp, tmp_path):
     window.close()
 
 
+def test_window_shows_before_media_libraries_load():
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT)])
+    finished = subprocess.run(
+        [sys.executable, "-m", "tests.startup_probe"],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if finished.returncode != 0:
+        raise RuntimeError(finished.stderr or finished.stdout or f"probe exited {finished.returncode}")
+    assert finished.stdout.splitlines() == ["painted ", "preloaded cv2,av,numpy"]
+
+
 def test_process_starts():
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"

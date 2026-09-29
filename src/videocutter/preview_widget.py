@@ -1,27 +1,20 @@
-import cv2
-import numpy as np
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
-from videocutter.media import open_capture, read_frame
 from videocutter.model import TimelineDocument
 
-
-def frame_to_pixmap(frame: np.ndarray) -> QPixmap:
-    if frame.ndim != 3 or frame.shape[2] != 3:
-        raise RuntimeError(f"expected a BGR frame, got shape {frame.shape}")
-    rgb = np.ascontiguousarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    height, width, channels = rgb.shape
-    image = QImage(rgb.data, width, height, channels * width, QImage.Format.Format_RGB888)
-    return QPixmap.fromImage(image.copy())
+if TYPE_CHECKING:
+    import cv2
 
 
 class PreviewWidget(QWidget):
     def __init__(self, document: TimelineDocument) -> None:
         super().__init__()
         self.document = document
-        self._captures: dict[str, cv2.VideoCapture] = {}
+        self._captures: dict[str, "cv2.VideoCapture"] = {}
         self._pixmap: QPixmap | None = None
         self._frame_key: tuple[str, int] | None = None
         self.setMinimumHeight(180)
@@ -43,6 +36,9 @@ class PreviewWidget(QWidget):
         key = (media.media_id, frame_index)
         if key == self._frame_key and self._pixmap is not None:
             return
+        # cv2 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入
+        from videocutter.capture import frame_to_pixmap, read_frame
+
         frame = read_frame(self._capture(media.path), media.fps, media.frame_count, source_time)
         self._pixmap = frame_to_pixmap(frame)
         self._frame_key = key
@@ -72,9 +68,11 @@ class PreviewWidget(QWidget):
         y = target.y() + (target.height() - scaled.height()) // 2
         painter.drawPixmap(x, y, scaled)
 
-    def _capture(self, path: str) -> cv2.VideoCapture:
+    def _capture(self, path: str) -> "cv2.VideoCapture":
         capture = self._captures.get(path)
         if capture is None:
+            from videocutter.capture import open_capture
+
             capture = open_capture(path)
             self._captures[path] = capture
         return capture

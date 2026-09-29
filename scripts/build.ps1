@@ -26,9 +26,6 @@ if ($LASTEXITCODE -ne 0) {
     --workpath build `
     --specpath build `
     --collect-submodules videocutter `
-    --collect-all PySide6 `
-    --collect-all cv2 `
-    --collect-all av `
     src\videocutter\__main__.py
 
 if ($LASTEXITCODE -ne 0) {

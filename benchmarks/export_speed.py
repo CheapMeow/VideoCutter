@@ -2,8 +2,8 @@ import sys
 import time
 
 from benchmarks.source import OUTPUT_DIR, ensure_source
+from videocutter.capture import probe_video
 from videocutter.export import export_timeline
-from videocutter.media import probe_video
 from videocutter.model import MediaItem, Segment, TimelineDocument, new_id
 from videocutter.output_settings import OutputSettings
 

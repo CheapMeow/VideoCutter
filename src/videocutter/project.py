@@ -2,7 +2,6 @@ import json
 import math
 from pathlib import Path
 
-from videocutter.media import probe_video
 from videocutter.model import TIME_EPSILON, MediaItem, Segment, TimelineDocument, new_id
 
 
@@ -67,6 +66,9 @@ def save_project(document: TimelineDocument, path: str) -> None:
 
 
 def load_project(path: str) -> TimelineDocument:
+    # cv2 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入
+    from videocutter.capture import probe_video
+
     file_path = Path(path)
     if file_path.suffix.lower() != PROJECT_SUFFIX:
         raise ValueError(f"project path must end with {PROJECT_SUFFIX}, got {path}")

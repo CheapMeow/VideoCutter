@@ -4,10 +4,9 @@ import time
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMainWindow, QSplitter
 
-from videocutter.export import (
+from videocutter.export_formats import (
     default_export_filter,
     export_filter_string,
-    export_timeline,
     output_path_for_filter,
 )
 from videocutter.model import TimelineDocument
@@ -283,6 +282,9 @@ class MainWindow(QMainWindow):
         self._export_to_path(output_path_for_filter(path, selected_filter))
 
     def _export_to_path(self, path: str) -> None:
+        # av 和 numpy 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入
+        from videocutter.export import export_timeline
+
         self._export_stop = False
         self._exporting = True
         self.source_panel.set_exporting(True)
