@@ -111,6 +111,8 @@ class TimelineWidget(QWidget):
         self._last_pos: QPointF | None = None
         self._last_track_index: int | None = None
         self._pressed_segment_id: str | None = None
+        # 鼠标拖动播放头时通过它通知外部，例如让主窗口暂停播放。
+        self.on_playhead_scrub = None
 
     def preferred_height(self) -> int:
         count = max(1, len(self.document.tracks))
@@ -442,6 +444,8 @@ class TimelineWidget(QWidget):
 
     def _scrub_playhead(self, x: float) -> None:
         self.document.set_playhead(self.time_at_x(x))
+        if self.on_playhead_scrub is not None:
+            self.on_playhead_scrub()
 
     def _pointer_moved(self, pos: QPointF) -> bool:
         return abs(pos.x() - self._press_pos.x()) + abs(pos.y() - self._press_pos.y()) >= 4

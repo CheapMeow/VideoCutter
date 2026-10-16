@@ -1,7 +1,8 @@
 import math
 import time
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QElapsedTimer, Qt, QTimer
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMainWindow, QSplitter
 
 from videocutter.export_formats import (
@@ -167,12 +168,17 @@ QScrollBar:vertical {
 
 
 class MainWindow(QMainWindow):
+    # 播放时每次刷新播放头的时间间隔，毫秒。
+    PLAY_TICK_MS = 33
+
     def __init__(self) -> None:
         super().__init__()
         self.document = TimelineDocument()
         self.output_settings = OutputSettings()
         self._export_stop = False
         self._exporting = False
+        self._playing = False
+        self._playhead_start = 0.0
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
         self.source_panel = SourcePanel(
@@ -202,6 +208,74 @@ class MainWindow(QMainWindow):
         splitter.setSizes([480, 800])
         self.setCentralWidget(splitter)
         self.setStyleSheet(STYLESHEET)
+        self._play_clock = QElapsedTimer()
+        self._play_timer = QTimer(self)
+        self._play_timer.setInterval(self.PLAY_TICK_MS)
+        self._play_timer.timeout.connect(self._advance_playback)
+        self._play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self._play_shortcut.activated.connect(self._toggle_playback)
+        self.timeline.on_playhead_scrub = self.pause_playback
+
+    def playback_end(self) -> float | None:
+        # 播放到轨道上最后一个段落的末尾为止；轨道上没有段落时无处可播。
+        segments = self.document.all_segments()
+        if not segments:
+            return None
+        return max(segment.timeline_end for segment in segments)
+
+    def is_playing(self) -> bool:
+        return self._playing
+
+    def _toggle_playback(self) -> None:
+        if self._exporting:
+            return
+        if self._playing:
+            self.pause_playback()
+            return
+        end = self.playback_end()
+        if end is None:
+            self.show_status("轨道上没有可以播放的视频")
+            return
+        if self.document.playhead >= end:
+            self.document.set_playhead(0.0)
+        self._playing = True
+        self._playhead_start = self.document.playhead
+        self._play_clock.start()
+        self._play_timer.start()
+
+    def pause_playback(self) -> None:
+        if not self._playing:
+            return
+        self._playing = False
+        self._play_timer.stop()
+
+    def _advance_playback(self) -> None:
+        self._apply_playback(self._playhead_start + self._play_clock.elapsed() / 1000.0)
+
+    def _apply_playback(self, playhead: float) -> None:
+        # playhead 是本次播放推进到的目标时间，由开始时间加上已经流逝的播放时长得到。
+        end = self.playback_end()
+        if end is None:
+            self.pause_playback()
+            return
+        if playhead >= end:
+            self.pause_playback()
+            self.document.set_playhead(end)
+        else:
+            self.document.set_playhead(playhead)
+        self._follow_playhead()
+        self.refresh_views()
+
+    def _follow_playhead(self) -> None:
+        # 播放头移出可见范围时平移视图，让它保持在画面里。
+        width = self.timeline.width()
+        if width <= 0:
+            return
+        visible_span = width / self.timeline.pixels_per_second
+        origin = self.timeline.view_origin
+        if origin <= self.document.playhead <= origin + visible_span:
+            return
+        self.timeline.view_origin = max(0.0, self.document.playhead - visible_span * 0.1)
 
     def refresh_views(self) -> None:
         self.preview.refresh()
@@ -243,6 +317,7 @@ class MainWindow(QMainWindow):
         self.show_status(f"已保存工程：{path}")
 
     def _replace_document(self, document: TimelineDocument) -> None:
+        self.pause_playback()
         self.timeline.discard_gesture()
         self.preview.release()
         self.document = document
@@ -285,6 +360,7 @@ class MainWindow(QMainWindow):
         # av 和 numpy 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入
         from videocutter.export import export_timeline
 
+        self.pause_playback()
         self._export_stop = False
         self._exporting = True
         self.source_panel.set_exporting(True)
@@ -333,6 +409,7 @@ class MainWindow(QMainWindow):
         self.refresh_views()
 
     def closeEvent(self, event) -> None:
+        self.pause_playback()
         self._export_stop = True
         self.preview.release()
         super().closeEvent(event)

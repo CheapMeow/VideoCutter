@@ -459,6 +459,94 @@ def _clock_seconds(text: str) -> int:
     return int(hours) * 3600 + int(minutes) * 60 + int(secs)
 
 
+def _window_with_clip(qapp, tmp_path, frame_count: int = 8) -> MainWindow:
+    path = tmp_path / "clip.avi"
+    write_color_video(path, frame_count=frame_count, fps=10, size=(160, 90))
+    window = MainWindow()
+    window.resize(1100, 720)
+    window.show()
+    qapp.processEvents()
+    window.source_panel.add_paths([str(path)])
+    media_id = _media_id(window, path)
+    assert _drop_media(window, media_id, row_top(0) + TRACK_HEIGHT / 2)
+    return window
+
+
+def test_space_toggles_playback_and_restarts_after_the_end(qapp, tmp_path):
+    window = _window_with_clip(qapp, tmp_path)
+    assert window.playback_end() == pytest.approx(0.8)
+    QTest.keyClick(window, Qt.Key.Key_Space)
+    assert window.is_playing()
+    assert window._play_timer.isActive()
+    window._apply_playback(0.3)
+    assert window.document.playhead == pytest.approx(0.3)
+    assert window.is_playing()
+    QTest.keyClick(window, Qt.Key.Key_Space)
+    assert not window.is_playing()
+    assert window._play_timer.isActive() is False
+    assert window.document.playhead == pytest.approx(0.3)
+    window._apply_playback(10.0)
+    assert not window.is_playing()
+    assert window.document.playhead == pytest.approx(0.8)
+    QTest.keyClick(window, Qt.Key.Key_Space)
+    assert window.is_playing()
+    assert window.document.playhead == pytest.approx(0)
+    window.close()
+
+
+def test_ruler_click_pauses_the_playback(qapp, tmp_path):
+    window = _window_with_clip(qapp, tmp_path)
+    window.document.set_playhead(0.1)
+    QTest.keyClick(window, Qt.Key.Key_Space)
+    assert window.is_playing()
+    QTest.mousePress(
+        window.timeline,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        QPoint(150, 8),
+    )
+    assert not window.is_playing()
+    assert window.document.playhead == pytest.approx(1.5)
+    window.close()
+
+
+def test_playback_follows_the_playhead_when_it_leaves_the_view(qapp, tmp_path):
+    window = _window_with_clip(qapp, tmp_path)
+    visible_span = window.timeline.width() / window.timeline.pixels_per_second
+    window.document.set_playhead(1.0)
+    window._follow_playhead()
+    assert window.timeline.view_origin == 0
+    window.document.set_playhead(100.0)
+    window._follow_playhead()
+    assert window.timeline.view_origin == pytest.approx(100.0 - visible_span * 0.1)
+    window.close()
+
+
+def test_space_without_segments_or_during_export_does_not_play(qapp, tmp_path):
+    window = MainWindow()
+    window.show()
+    qapp.processEvents()
+    QTest.keyClick(window, Qt.Key.Key_Space)
+    assert window.statusBar().currentMessage() == "轨道上没有可以播放的视频"
+    assert not window.is_playing()
+    window._exporting = True
+    QTest.keyClick(window, Qt.Key.Key_Space)
+    assert not window.is_playing()
+    window._exporting = False
+    window.close()
+
+
+def test_export_and_project_open_pause_the_playback(qapp, tmp_path):
+    window = _window_with_clip(qapp, tmp_path)
+    window._toggle_playback()
+    assert window.is_playing()
+    window._exporting = True
+    window._replace_document(window.document)
+    window._exporting = False
+    assert not window.is_playing()
+    window.close()
+
+
 def _media_id(window: MainWindow, path: Path) -> str:
     resolved = str(path.resolve())
     for item in window.document.media.values():
