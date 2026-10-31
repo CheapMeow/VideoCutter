@@ -38,9 +38,9 @@ def test_native_preview_delivers_high_fps_without_gui_frame_seeks(qapp, tmp_path
         assert window.preview.frame_pixmap() is not None
         assert window._playback.player.error() == QMediaPlayer.Error.NoError
         window.pause_playback()
-        assert not window.preview.video_widget.isVisible()
+        assert window.preview.video_widget.isVisible()
         assert window.preview.frame_pixmap() is not None
-        assert capture.get(cv2.CAP_PROP_POS_FRAMES) > capture_position
+        assert capture.get(cv2.CAP_PROP_POS_FRAMES) == capture_position
     finally:
         window.close()
 

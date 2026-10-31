@@ -1,7 +1,3 @@
-import os
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -10,5 +6,7 @@ from PySide6.QtWidgets import QApplication
 def qapp():
     application = QApplication.instance()
     if application is None:
-        application = QApplication([])
+        application = QApplication(["videocutter-tests", "-platform", "offscreen"])
+    if application.platformName() != "offscreen":
+        raise RuntimeError("GUI tests require the offscreen platform")
     return application

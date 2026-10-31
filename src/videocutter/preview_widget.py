@@ -17,6 +17,7 @@ class PreviewWidget(QWidget):
         self._captures: dict[str, "cv2.VideoCapture"] = {}
         self._pixmap: QPixmap | None = None
         self._frame_key: tuple[str, int] | None = None
+        self._paused_source: tuple[str, float] | None = None
         self.video_widget = None
         self._streaming = False
         self.setMinimumHeight(180)
@@ -37,14 +38,27 @@ class PreviewWidget(QWidget):
         self._streaming = streaming
         self._frame_key = None
         self._pixmap = None
+        self._paused_source = None
+        located = self.document.source_time_at_playhead()
+        if (
+            not streaming
+            and located is not None
+            and self.video_widget is not None
+            and not self.video_widget.isHidden()
+            and self.video_widget.videoSink().videoFrame().isValid()
+        ):
+            # QMediaPlayer 暂停后保留当前视频表面和帧，直到播放头或素材发生变化。
+            media, source_time = located
+            self._paused_source = (media.media_id, source_time)
+            return
         if self.video_widget is not None:
-            self.video_widget.setVisible(
-                streaming and self.document.top_segment_at_playhead() is not None
-            )
+            self.video_widget.setVisible(streaming and located is not None)
         self.update()
 
     def frame_pixmap(self) -> QPixmap | None:
-        if self._streaming and self.document.top_segment_at_playhead() is not None:
+        if (
+            self._streaming or self._paused_source is not None
+        ) and self.document.top_segment_at_playhead() is not None:
             frame = self.video_widget.videoSink().videoFrame()
             if frame.isValid():
                 return QPixmap.fromImage(frame.toImage())
@@ -60,9 +74,14 @@ class PreviewWidget(QWidget):
         if located is None:
             self._pixmap = None
             self._frame_key = None
+            self._paused_source = None
+            if self.video_widget is not None:
+                self.video_widget.hide()
             self.update()
             return
         media, source_time = located
+        if self._paused_source == (media.media_id, source_time):
+            return
         frame_index = int(source_time * media.fps)
         if frame_index == media.frame_count:
             frame_index = media.frame_count - 1
@@ -75,10 +94,16 @@ class PreviewWidget(QWidget):
         frame = read_frame(self._capture(media.path), media.fps, media.frame_count, source_time)
         self._pixmap = frame_to_pixmap(frame)
         self._frame_key = key
+        self._paused_source = None
+        if self.video_widget is not None:
+            self.video_widget.hide()
         self.update()
 
     def release(self) -> None:
-        self.set_streaming(False)
+        self._streaming = False
+        self._paused_source = None
+        if self.video_widget is not None:
+            self.video_widget.hide()
         for capture in self._captures.values():
             capture.release()
         self._captures.clear()
