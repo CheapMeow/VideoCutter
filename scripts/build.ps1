@@ -11,9 +11,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "VIDEOCUTTER_PYTHON must be Python 3.11 or newer"
 }
 
-& $env:VIDEOCUTTER_PYTHON -c "import PySide6, cv2, PyInstaller, av"
+& $env:VIDEOCUTTER_PYTHON -c "import PySide6.QtMultimedia, cv2, PyInstaller, av"
 if ($LASTEXITCODE -ne 0) {
-    throw "VIDEOCUTTER_PYTHON is missing PySide6, opencv-python, PyInstaller, or av"
+    throw "VIDEOCUTTER_PYTHON is missing PySide6-Addons, opencv-python, PyInstaller, or av"
 }
 
 & $env:VIDEOCUTTER_PYTHON -m PyInstaller `

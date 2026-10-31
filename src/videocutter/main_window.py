@@ -178,7 +178,7 @@ class MainWindow(QMainWindow):
         self._export_stop = False
         self._exporting = False
         self._playing = False
-        self._playhead_start = 0.0
+        self._playback = None
         self.setWindowTitle("VideoCutter")
         self.resize(1280, 760)
         self.source_panel = SourcePanel(
@@ -238,22 +238,34 @@ class MainWindow(QMainWindow):
             return
         if self.document.playhead >= end:
             self.document.set_playhead(0.0)
+        if self._playback is None:
+            from videocutter.playback import TimelinePlayback
+
+            self._playback = TimelinePlayback(self)
+            self._playback.failed.connect(self._playback_failed)
         self._playing = True
-        self._playhead_start = self.document.playhead
+        self._playback.sync(self.document)
         self._play_clock.start()
         self._play_timer.start()
 
     def pause_playback(self) -> None:
-        if not self._playing:
-            return
         self._playing = False
         self._play_timer.stop()
+        if self._playback is not None:
+            self._playback.pause()
+
+    def _playback_failed(self, message: str) -> None:
+        self.pause_playback()
+        self.show_status(f"播放失败：{message}")
 
     def _advance_playback(self) -> None:
-        self._apply_playback(self._playhead_start + self._play_clock.elapsed() / 1000.0)
+        elapsed = self._play_clock.restart() / 1000.0
+        target = self.document.playhead + elapsed
+        target = self._playback.timeline_position(target)
+        self._apply_playback(max(self.document.playhead, target))
 
     def _apply_playback(self, playhead: float) -> None:
-        # playhead 是本次播放推进到的目标时间，由开始时间加上已经流逝的播放时长得到。
+        # 有素材时跟随媒体时钟，轨道间隙使用经过的实际时间。
         end = self.playback_end()
         if end is None:
             self.pause_playback()
@@ -278,6 +290,8 @@ class MainWindow(QMainWindow):
         self.timeline.view_origin = max(0.0, self.document.playhead - visible_span * 0.1)
 
     def refresh_views(self) -> None:
+        if self._playing:
+            self._playback.sync(self.document)
         self.preview.refresh()
         self.timeline_host.sync()
         self.timeline.update()
@@ -318,6 +332,8 @@ class MainWindow(QMainWindow):
 
     def _replace_document(self, document: TimelineDocument) -> None:
         self.pause_playback()
+        if self._playback is not None:
+            self._playback.release()
         self.timeline.discard_gesture()
         self.preview.release()
         self.document = document
@@ -410,6 +426,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.pause_playback()
+        if self._playback is not None:
+            self._playback.release()
         self._export_stop = True
         self.preview.release()
         super().closeEvent(event)
