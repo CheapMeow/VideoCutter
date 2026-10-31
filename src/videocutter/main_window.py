@@ -168,8 +168,8 @@ QScrollBar:vertical {
 
 
 class MainWindow(QMainWindow):
-    # 播放时每次刷新播放头的时间间隔，毫秒。
-    PLAY_TICK_MS = 33
+    # 视频帧由播放器调度，此间隔只控制时间轴播放头。
+    PLAY_TICK_MS = 16
 
     def __init__(self) -> None:
         super().__init__()
@@ -210,6 +210,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(STYLESHEET)
         self._play_clock = QElapsedTimer()
         self._play_timer = QTimer(self)
+        self._play_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._play_timer.setInterval(self.PLAY_TICK_MS)
         self._play_timer.timeout.connect(self._advance_playback)
         self._play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
@@ -243,16 +244,24 @@ class MainWindow(QMainWindow):
 
             self._playback = TimelinePlayback(self)
             self._playback.failed.connect(self._playback_failed)
+            self.preview.attach_player(self._playback.player)
         self._playing = True
+        self.preview.set_streaming(True)
         self._playback.sync(self.document)
+        if not self._playing:
+            return
         self._play_clock.start()
         self._play_timer.start()
 
     def pause_playback(self) -> None:
+        was_playing = self._playing
         self._playing = False
         self._play_timer.stop()
         if self._playback is not None:
             self._playback.pause()
+        self.preview.set_streaming(False)
+        if was_playing:
+            self.preview.refresh()
 
     def _playback_failed(self, message: str) -> None:
         self.pause_playback()
@@ -271,12 +280,17 @@ class MainWindow(QMainWindow):
             self.pause_playback()
             return
         if playhead >= end:
-            self.pause_playback()
             self.document.set_playhead(end)
+            self.pause_playback()
         else:
             self.document.set_playhead(playhead)
         self._follow_playhead()
-        self.refresh_views()
+        if self._playing:
+            self._playback.sync(self.document)
+            self.preview.refresh()
+            self.timeline.update()
+        else:
+            self.refresh_views()
 
     def _follow_playhead(self) -> None:
         # 播放头移出可见范围时平移视图，让它保持在画面里。

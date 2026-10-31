@@ -17,13 +17,46 @@ class PreviewWidget(QWidget):
         self._captures: dict[str, "cv2.VideoCapture"] = {}
         self._pixmap: QPixmap | None = None
         self._frame_key: tuple[str, int] | None = None
+        self.video_widget = None
+        self._streaming = False
         self.setMinimumHeight(180)
 
+    def attach_player(self, player) -> None:
+        if self.video_widget is None:
+            from PySide6.QtMultimediaWidgets import QVideoWidget
+
+            self.video_widget = QVideoWidget(self)
+            self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+            self.video_widget.setGeometry(self.rect().adjusted(12, 12, -12, -12))
+            self.video_widget.hide()
+        player.setVideoOutput(self.video_widget)
+
+    def set_streaming(self, streaming: bool) -> None:
+        if self._streaming == streaming:
+            return
+        self._streaming = streaming
+        self._frame_key = None
+        self._pixmap = None
+        if self.video_widget is not None:
+            self.video_widget.setVisible(
+                streaming and self.document.top_segment_at_playhead() is not None
+            )
+        self.update()
+
     def frame_pixmap(self) -> QPixmap | None:
+        if self._streaming and self.document.top_segment_at_playhead() is not None:
+            frame = self.video_widget.videoSink().videoFrame()
+            if frame.isValid():
+                return QPixmap.fromImage(frame.toImage())
+            return None
         return self._pixmap
 
     def refresh(self) -> None:
         located = self.document.source_time_at_playhead()
+        if self._streaming:
+            # 连续播放由 Qt 在解码线程中处理，GUI 线程只负责部件的显示状态。
+            self.video_widget.setVisible(located is not None)
+            return
         if located is None:
             self._pixmap = None
             self._frame_key = None
@@ -36,7 +69,7 @@ class PreviewWidget(QWidget):
         key = (media.media_id, frame_index)
         if key == self._frame_key and self._pixmap is not None:
             return
-        # cv2 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入
+        # cv2 启动时不加载，窗口显示后由 videocutter.app 在后台预先导入。
         from videocutter.capture import frame_to_pixmap, read_frame
 
         frame = read_frame(self._capture(media.path), media.fps, media.frame_count, source_time)
@@ -45,28 +78,35 @@ class PreviewWidget(QWidget):
         self.update()
 
     def release(self) -> None:
+        self.set_streaming(False)
         for capture in self._captures.values():
             capture.release()
         self._captures.clear()
+        self._pixmap = None
+        self._frame_key = None
+        self.update()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self.video_widget is not None:
+            self.video_widget.setGeometry(self.rect().adjusted(12, 12, -12, -12))
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#111111"))
         if self._pixmap is None:
-            painter.setPen(QColor("#9a9a9a"))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "无画面")
+            if not self._streaming or self.document.top_segment_at_playhead() is None:
+                painter.setPen(QColor("#9a9a9a"))
+                painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "无画面")
             return
         target = self.rect().adjusted(12, 12, -12, -12)
         if target.width() <= 0 or target.height() <= 0:
             return
-        scaled = self._pixmap.scaled(
-            target.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        x = target.x() + (target.width() - scaled.width()) // 2
-        y = target.y() + (target.height() - scaled.height()) // 2
-        painter.drawPixmap(x, y, scaled)
+        size = self._pixmap.size().scaled(target.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        target.setSize(size)
+        target.moveCenter(self.rect().center())
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.drawPixmap(target, self._pixmap)
 
     def _capture(self, path: str) -> "cv2.VideoCapture":
         capture = self._captures.get(path)
