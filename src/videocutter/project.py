@@ -180,6 +180,7 @@ def load_project(path: str) -> TimelineDocument:
                     f"media size {item.width}x{item.height} does not match "
                     f"output size {output.width}x{output.height}"
                 )
+    document.clear_history()
     return document
 
 

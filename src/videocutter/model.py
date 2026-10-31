@@ -5,6 +5,8 @@ import math
 import uuid
 from dataclasses import dataclass
 
+from videocutter.history import EditHistory, EditState, record_edit
+
 
 TIME_EPSILON = 1e-6
 
@@ -183,7 +185,28 @@ class TimelineDocument:
         self._drag_base: list[list[Segment]] | None = None
         self._drag_original: list[list[Segment]] | None = None
         self._drag_segment: Segment | None = None
+        self._drag_history: EditState | None = None
+        self._history = EditHistory(self)
 
+    def edit_group(self):
+        return self._history.group()
+
+    def can_undo(self) -> bool:
+        return self._history.can_undo()
+
+    def can_redo(self) -> bool:
+        return self._history.can_redo()
+
+    def undo(self) -> bool:
+        return self._history.undo()
+
+    def redo(self) -> bool:
+        return self._history.redo()
+
+    def clear_history(self) -> None:
+        self._history.clear()
+
+    @record_edit
     def add_media(self, item: MediaItem) -> None:
         if item.media_id in self.media:
             raise ValueError(f"duplicate media id: {item.media_id}")
@@ -222,6 +245,7 @@ class TimelineDocument:
             return None
         return len(self._drag_base)
 
+    @record_edit
     def place_new_segment(
         self,
         media_id: str,
@@ -250,6 +274,7 @@ class TimelineDocument:
         if self._drag_segment is not None:
             raise RuntimeError("a segment drag is already active")
         track_index, segment = self.find_segment(segment_id)
+        self._drag_history = self._history.capture()
         self._drag_original = copy.deepcopy(self.tracks)
         self.tracks[track_index] = [
             item for item in self.tracks[track_index] if item.segment_id != segment_id
@@ -272,11 +297,9 @@ class TimelineDocument:
         self._place(segment, desired_start, track_index, insert_track, snap_threshold)
 
     def end_segment_drag(self) -> None:
-        if self._drag_segment is None:
+        if self._drag_segment is None or self._drag_history is None:
             raise RuntimeError("no segment drag is active")
         segment_id = self._drag_segment.segment_id
-        self.tracks = [track for track in self.tracks if track]
-        self._clear_drag()
         placed = any(
             segment.segment_id == segment_id
             for track in self.tracks
@@ -284,6 +307,11 @@ class TimelineDocument:
         )
         if not placed:
             raise RuntimeError(f"drag ended without a placed segment: {segment_id}")
+        before = self._drag_history
+        self.tracks = [track for track in self.tracks if track]
+        self.selected_segment_id = segment_id
+        self._clear_drag()
+        self._history.record(before)
 
     def cancel_segment_drag(self) -> None:
         if self._drag_original is None:
@@ -296,6 +324,7 @@ class TimelineDocument:
             self.find_segment(segment_id)
         self.selected_segment_id = segment_id
 
+    @record_edit
     def delete_segment(self, segment_id: str) -> None:
         if self._drag_segment is not None:
             raise RuntimeError("cannot delete a segment while dragging")
@@ -309,6 +338,7 @@ class TimelineDocument:
         if not self.all_segments():
             self.reference_media_id = None
 
+    @record_edit
     def delete_media(self, media_id: str) -> None:
         if media_id not in self.media:
             raise KeyError(media_id)
@@ -336,6 +366,7 @@ class TimelineDocument:
         time_sec = _require_finite("playhead", time_sec)
         self.playhead = max(0.0, time_sec)
 
+    @record_edit
     def split_selected(self) -> tuple[Segment, Segment] | None:
         # 只分割当前选中的那一段，并且当前帧必须落在这段内部。
         if self._drag_segment is not None:
@@ -426,3 +457,4 @@ class TimelineDocument:
         self._drag_segment = None
         self._drag_base = None
         self._drag_original = None
+        self._drag_history = None

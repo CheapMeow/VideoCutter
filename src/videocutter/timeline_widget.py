@@ -119,6 +119,8 @@ class TimelineWidget(QWidget):
         return RULER_HEIGHT + count * track_stride() + TRACK_GAP
 
     def discard_gesture(self) -> None:
+        if self.document.drag_base_track_count() is not None:
+            self.document.cancel_segment_drag()
         self._mode = None
         self._moved = False
         self._pressed_segment_id = None
@@ -127,6 +129,7 @@ class TimelineWidget(QWidget):
         self._scroll_timer.stop()
         if self.mouseGrabber() is self:
             self.releaseMouse()
+        self.unsetCursor()
 
     def time_at_x(self, x: float) -> float:
         return self.view_origin + x / self.pixels_per_second

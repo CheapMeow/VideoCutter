@@ -221,8 +221,10 @@ class SourcePanel(QWidget):
     def add_paths(self, paths: list[str]) -> None:
         if self._exporting:
             raise RuntimeError("cannot add media while exporting")
-        for path in paths:
-            self._add_path(path)
+        with self.document.edit_group():
+            for path in paths:
+                self._add_path(path)
+        self.reload_media_list()
         self._on_changed()
 
     def set_exporting(self, exporting: bool) -> None:
@@ -299,7 +301,6 @@ class SourcePanel(QWidget):
             bitrate_kbps=float(probed["bitrate_kbps"]),
         )
         self.document.add_media(item)
-        self._append_media_row(item)
 
     def remove_media(self, media_id: str) -> None:
         self.document.delete_media(media_id)
@@ -313,8 +314,9 @@ class SourcePanel(QWidget):
             if not isinstance(media_id, str) or not media_id:
                 raise RuntimeError("media item is missing an id")
             media_ids.append(media_id)
-        for media_id in media_ids:
-            self.document.delete_media(media_id)
+        with self.document.edit_group():
+            for media_id in media_ids:
+                self.document.delete_media(media_id)
         if media_ids:
             self.reload_media_list()
             self._on_changed()

@@ -215,7 +215,42 @@ class MainWindow(QMainWindow):
         self._play_timer.timeout.connect(self._advance_playback)
         self._play_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
         self._play_shortcut.activated.connect(self._toggle_playback)
+        self._undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        self._undo_shortcut.activated.connect(self.undo_edit)
+        self._redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
+        self._redo_shortcut.activated.connect(self.redo_edit)
         self.timeline.on_playhead_scrub = self.pause_playback
+
+    def undo_edit(self) -> None:
+        self._change_history(redo=False)
+
+    def redo_edit(self) -> None:
+        self._change_history(redo=True)
+
+    def _change_history(self, redo: bool) -> None:
+        if self._exporting:
+            return
+        if self.document.drag_base_track_count() is not None:
+            self.pause_playback()
+            self.timeline.discard_gesture()
+            self.refresh_views()
+            return
+        available = self.document.can_redo() if redo else self.document.can_undo()
+        if not available:
+            return
+        self.pause_playback()
+        self.timeline.discard_gesture()
+        if self._playback is not None:
+            self._playback.release()
+        self.preview.release()
+        if redo:
+            self.document.redo()
+        else:
+            self.document.undo()
+        self.source_panel.reload_media_list()
+        self._follow_playhead()
+        self.refresh_views()
+        self.show_status("已重做" if redo else "已撤销")
 
     def playback_end(self) -> float | None:
         # 播放到轨道上最后一个段落的末尾为止；轨道上没有段落时无处可播。
